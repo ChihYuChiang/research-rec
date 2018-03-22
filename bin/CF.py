@@ -53,11 +53,10 @@ def SVD(matrix, nf=10):
     u, s, vh = np.linalg.svd(matrix)
 
     #Truncate SVD (use t largest singular values)
-    u_t1 = u[:, 0:nf]
-    u_t2 = u[:, 1:nf + 1]
+    u_t = u[:, 0:nf]
 
     #Distance matrix
-    u_dist = squareform(pdist(u_t1, 'cosine'))
+    u_dist = squareform(pdist(u_t, 'cosine'))
     
     return u_dist
 
@@ -150,9 +149,13 @@ print('Test correlation: ', cor[0, 1])
 
 #--Benchmark MSEs
 #Column mean prediction MSE
-nMean = np.nanmean(pref_nan, axis=0)
+#Use broadcast for computing correlation
+nMean = np.broadcast_to(np.nanmean(pref_nan, axis=0), (nM, nN))
+nMean_long = nMean[isnan_inv]
 mse_nMean = np.nansum(np.square(nMean - pref_nan) / nMN)
+cor_nMean = np.corrcoef(nMean_long, pref)
 print('Column mean MSE: ', mse_nMean)
+print('Column mean correlation: ', cor_nMean[0, 1])
 
 #All mean prediction MSE
 mnMean = np.nanmean(pref_nan)
