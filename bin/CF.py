@@ -64,8 +64,9 @@ def SVD(matrix, nf=10):
 
 #--CF prediction based on the left out
 #m, n specify the left out rating
+#mode changes the way prediction is computed
 #Return predicted score
-def CF(pref_nan, m, n):
+def CF(pref_nan, m, n, nRef=10, mode=0):
 
     #Mask the pref_nan to acquire the training data
     pref_train = pref_nan.copy()
@@ -81,15 +82,22 @@ def CF(pref_nan, m, n):
     targetUser = u_dist[m, :]
 
     #Sort, remove self, and find the best matched raters
-    matched = np.delete(np.argsort(u_dist[m, :]), 0)
-    reference = []
+    matched = np.delete(np.argsort(targetUser), 0)
+    reference_rating = []
+    reference_dist = []
     for rater in matched:
         if np.isnan(pref_nan[rater, n]): continue
-        if len(reference) == 10: break
-        reference.append(pref_nan[rater, n])
+        if len(reference_rating) == nRef: break
+        reference_rating.append(pref_nan[rater, n])
+        reference_dist.append(targetUser[rater])
 
     #Prediction
-    prediction = np.mean(reference)
+    #Dist as weight -> transform back to -1 to 1
+    computation = {
+        0: np.mean(reference_rating),
+        1: np.dot(np.array(reference_rating), -(np.array(reference_dist) - 1))
+    }
+    prediction = computation[mode]
 
     return prediction
 
@@ -123,15 +131,21 @@ Model
 ------------------------------------------------------------
 '''
 #--Leave-one-out prediction
-predictions = np.full(shape=pref_nan.shape, fill_value=np.nan)
+predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
 for m in np.arange(nM):
     for n in gameRatedByRater[m]:
-        predictions[m, n] = CF(pref_nan, m, n)
+        predictions_nan[m, n] = CF(pref_nan, m, n, nRef=10, mode=1)
+
+#Remove nan
+predictions = predictions_nan[isnan_inv]
+pref = pref_nan[isnan_inv]
 
 
 #--Test MSE
-mse = np.nansum(np.square(predictions - pref_nan) / nMN)
+mse = np.nansum(np.square(predictions_nan - pref_nan) / nMN)
+cor = np.corrcoef(predictions, pref)
 print('Test MSE: ', mse)
+print('Test correlation: ', cor[0, 1])
 
 
 #--Benchmark MSEs
