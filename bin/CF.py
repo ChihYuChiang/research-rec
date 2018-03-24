@@ -183,7 +183,7 @@ nRef, mode = (10, 1)
 predictions = CF_loo(u_dist=None, nRef=nRef, mode=mode)
 
 #Evaluation
-mse = np.nansum(np.square(predictions - prefs) / nMN)
+mse = np.sum(np.square(predictions - prefs) / nMN)
 cor = np.corrcoef(predictions, prefs)
 print('-' * 60)
 print('CF mode {} (reference = {})'.format(mode, nRef))
@@ -203,7 +203,7 @@ u_dist_person = squareform(pdist(person[:, :5], 'cosine')) #0:4 = personality; 5
 predictions_person = CF_loo(u_dist=u_dist_person, nRef=nRef_person, mode=mode_person)
 
 #Evaluation
-mse_person = np.nansum(np.square(predictions_person - prefs) / nMN)
+mse_person = np.sum(np.square(predictions_person - prefs) / nMN)
 cor_person = np.corrcoef(predictions_person, prefs)
 print('-' * 60)
 print('Personality mode {} (reference = {})'.format(mode_person, nRef_person))
@@ -213,7 +213,44 @@ print('Correlation =', cor_person[0, 1])
 
 #--Benchmark
 #Column mean prediction MSE
-mse_nMean = np.nansum(np.square(0 - prefs) / nMN)
+mse_nMean = np.sum(np.square(0 - prefs) / nMN)
 print('-' * 60)
 print('Column mean benchmark')
 print('MSE =', mse_nMean)
+
+np.sum(np.square((predictions + predictions_person) / 2 - prefs) / nMN)
+np.corrcoef(predictions + predictions_person, prefs)
+
+
+import tensorflow as tf
+import matplotlib.pyplot as plt
+
+learning_rate = 0.01
+w = tf.Variable(0, name='weight', dtype=tf.float32)
+cost = tf.reduce_sum(tf.square((w * predictions + (1 - w) * predictions_person) - prefs) / nMN)
+optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
+init = tf.global_variables_initializer()
+
+costs = []
+with tf.Session() as sess:
+    sess.run(init)
+
+    for epoch in range(2000):
+        _, epoch_cost = sess.run([optimizer, cost])
+
+        if epoch % 100 == 0:
+            print ("Cost after epoch %i: %f" % (epoch, epoch_cost))
+        if epoch % 5 == 0:
+            costs.append(epoch_cost)
+
+    plt.plot(np.squeeze(costs))
+    plt.ylabel('cost')
+    plt.xlabel('iterations (per fives)')
+    plt.title("Learning rate =" + str(learning_rate))
+    plt.show()
+
+    w_trained = sess.run(w)
+    print ("Trained w =", w_trained)
+
+np.sum(np.square((w_trained * predictions + (1 - w_trained) * predictions_person) - prefs) / nMN)
+np.corrcoef(w_trained * predictions + (1 - w_trained) * predictions_person, prefs)
