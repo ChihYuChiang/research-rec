@@ -28,7 +28,7 @@ def preprocessing():
 
 
 #--nan imputation by column mean
-#Return imputed matrix
+#Return imputed matrix, column mean
 def imputation(matrix):
     
     #Compute column mean
@@ -41,7 +41,7 @@ def imputation(matrix):
     #np.take is faster than fancy indexing i.e. nMean[[1, 3, 5]]
     matrix[naniloc] = np.take(nMean, naniloc[1])
 
-    return matrix
+    return matrix, nMean
 
 
 #--SVD
@@ -61,7 +61,31 @@ def SVD(matrix, nf=10):
     return u_dist
 
 
-#--CF prediction based on the left out
+#--Find the best matched raters and make reference
+#Return reference rating vec and corresponding distance vec
+def reference(dist_target, pref_nan, nRef):
+
+    #Sort the rater by distance and remove self
+    reference_rater = np.delete(np.argsort(dist_target), 0)
+
+    #Make reference rating and distance
+    reference_rating = []
+    reference_dist = []
+    for rater in reference_rater:
+
+        #Skip nan
+        if np.isnan(pref_nan[rater, n]): continue
+        
+        #Acquire only nRef references
+        if len(reference_rating) == nRef: break
+
+        reference_rating.append(pref_nan[rater, n])
+        reference_dist.append(dist_target[rater])
+
+    return reference_rating, reference_dist
+
+
+#--CF prediction of the left out
 #m, n specify the left out rating
 #mode changes the way prediction is computed
 #Return predicted score
@@ -72,33 +96,35 @@ def CF(pref_nan, m, n, nRef=10, mode=0):
     pref_train[m, n] = np.nan
 
     #Impute nan with column mean 
-    pref_train = imputation(pref_train)
+    pref_train, nMean = imputation(pref_train)
 
-    #Perform SVD
+    #If mode 1, substract col mean from pref
+    if mode == 1: pref_train -= nMean
+
+    #Perform SVD for user distance matrix
     u_dist = SVD(pref_train, nf=20)
 
-    #Target user row
-    targetUser = u_dist[m, :]
-
-    #Sort, remove self, and find the best matched raters
-    matched = np.delete(np.argsort(targetUser), 0)
-    reference_rating = []
-    reference_dist = []
-    for rater in matched:
-        if np.isnan(pref_nan[rater, n]): continue
-        if len(reference_rating) == nRef: break
-        reference_rating.append(pref_nan[rater, n])
-        reference_dist.append(targetUser[rater])
+    #Sort, remove self, and find the best matched raters and their ratings
+    reference_rating, reference_dist = reference(u_dist[m, :], pref_nan, nRef)
 
     #Prediction
+    #Subtract column mean to see the prediction of personal preference
     #Dist as weight -> transform back to -1 to 1
     computation = {
-        0: np.mean(reference_rating),
-        1: np.dot(np.array(reference_rating), -(np.array(reference_dist) - 1))
+        0: np.mean(reference_rating) - nMean[n],
+        1: np.mean(reference_rating) - nMean[n],
+        2: np.dot(np.array(reference_rating) - nMean[n], -(np.array(reference_dist) - 1))
     }
     prediction = computation[mode]
 
     return prediction
+
+
+#--Item similarity prediction of the left out (with an extra similarity matrix)
+def itemSimF(matrix, pref_nan, m, n, nRef=10):
+
+    #Get user distance matrix
+    u_dist = squareform(pdist(matrix, 'cosine'))
 
 
 
@@ -130,34 +156,31 @@ Model
 ------------------------------------------------------------
 '''
 #--Leave-one-out prediction
+#CF mode
+mode = 2
+nMean = np.broadcast_to(np.nanmean(pref_nan, axis=0), (nM, nN))
+
+#Operation
 predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
 for m in np.arange(nM):
     for n in gameRatedByRater[m]:
-        predictions_nan[m, n] = CF(pref_nan, m, n, nRef=10, mode=1)
+        predictions_nan[m, n] = CF(pref_nan, m, n, nRef=10, mode=mode)
 
-#Remove nan
+#Take non-nan entries and makes into long-form by [isnan_inv] slicing
+#Also subtract column mean for pref matrix
 predictions = predictions_nan[isnan_inv]
-pref = pref_nan[isnan_inv]
+pref = pref_nan[isnan_inv] - nMean[isnan_inv]
 
 
 #--Test MSE
-mse = np.nansum(np.square(predictions_nan - pref_nan) / nMN)
+mse = np.nansum(np.square(predictions - pref) / nMN)
 cor = np.corrcoef(predictions, pref)
 print('Test MSE: ', mse)
 print('Test correlation: ', cor[0, 1])
 
 
-#--Benchmark MSEs
+#--Benchmark
 #Column mean prediction MSE
-#Use broadcast for computing correlation
-nMean = np.broadcast_to(np.nanmean(pref_nan, axis=0), (nM, nN))
-nMean_long = nMean[isnan_inv]
-mse_nMean = np.nansum(np.square(nMean - pref_nan) / nMN)
-cor_nMean = np.corrcoef(nMean_long, pref)
+mse_nMean = np.nansum(np.square(0 - pref) / nMN)
+cor_nMean = np.corrcoef(np.broadcast_to(0, nMN), pref)
 print('Column mean MSE: ', mse_nMean)
-print('Column mean correlation: ', cor_nMean[0, 1])
-
-#All mean prediction MSE
-mnMean = np.nanmean(pref_nan)
-mse_mnMean = np.nansum(np.square(mnMean - pref_nan) / nMN)
-print('All mean MSE: ', mse_mnMean)

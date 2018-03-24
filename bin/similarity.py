@@ -9,7 +9,7 @@ sns.set(color_codes=True)
 
 #--Matrix from survey (25 features)
 emb_triplet = np.genfromtxt(r'..\data\tste_embedding_25.csv', delimiter=',', skip_header=0)
-print('sim_triplet shape: ', sim_triplet.shape)
+print('sim_triplet shape: ', emb_triplet.shape)
 
 
 #--Matrix from text (300 features)
