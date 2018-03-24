@@ -89,20 +89,21 @@ def reference(dist_target, pref_nan, n, nRef):
 #m, n specify the left out rating
 #mode changes the way prediction is computed
 #Return predicted score
-def CF(pref_nan, m, n, nRef, mode):
+def CF(pref_nan, u_dist, m, n, nRef, mode):
 
     #Mask the pref_nan to acquire the training data
     pref_train = pref_nan.copy()
     pref_train[m, n] = np.nan
 
-    #Impute nan with column mean 
+    #Impute nan with column mean
     pref_train, nMean = imputation(pref_train)
 
     #If mode 1, substract col mean from pref
     if mode == 1: pref_train -= nMean
 
     #Perform SVD for user distance matrix
-    u_dist = SVD(pref_train, nf=20)
+    #Or use precomputed distance matrix
+    if u_dist is None: u_dist = SVD(pref_train, nf=20)
 
     #Sort, remove self, and find the best matched raters and their ratings
     reference_rating, reference_dist = reference(u_dist[m, :], pref_nan, n, nRef)
@@ -122,25 +123,23 @@ def CF(pref_nan, m, n, nRef, mode):
 
 #--Leave-one-out implementation
 #Return predicted score in long-form (de-colmeaned) and CF mode
-def CF_loo(pref_nan, isnan_inv, nM, nRef, mode):
+def CF_loo(u_dist, nRef, mode):
 
     #Operation
     predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
     for m in np.arange(nM):
         for n in gameRatedByRater[m]:
-            predictions_nan[m, n] = CF(pref_nan, m, n, nRef=nRef, mode=mode)
+            predictions_nan[m, n] = CF(pref_nan, u_dist, m, n, nRef=nRef, mode=mode)
 
     #Take non-nan entries and makes into long-form by [isnan_inv] slicing
     predictions = predictions_nan[isnan_inv]
     
-    return predictions, mode
+    return predictions
 
 
 #--Item similarity prediction of the left out (with an extra similarity matrix)
 def itemSimF(matrix, pref_nan, m, n, nRef=10):
-
-    #Get user distance matrix
-    u_dist = squareform(pdist(matrix, 'cosine'))
+    pass
 
 
 
@@ -171,23 +170,50 @@ print('Total number of ratings:\n', nMN)
 Model
 ------------------------------------------------------------
 '''
-#--Prediction
-#Leave-one-out CF implementation
-predictions, mode = CF_loo(pref_nan=pref_nan, isnan_inv=isnan_inv, nM=nM, nRef=10, mode=2)
-
-#Subtract column mean for pref matrix and makes it long-form
+#--Subtract column mean for pref matrix and makes it long-form
 nMean = np.broadcast_to(np.nanmean(pref_nan, axis=0), (nM, nN))
 prefs = pref_nan[isnan_inv] - nMean[isnan_inv]
 
 
-#--Evaluation
+#--Leave-one-out CF implementation
+#Parameters
+nRef, mode = (10, 1)
+
+#Prediction
+predictions = CF_loo(u_dist=None, nRef=nRef, mode=mode)
+
+#Evaluation
 mse = np.nansum(np.square(predictions - prefs) / nMN)
 cor = np.corrcoef(predictions, prefs)
-if mode != 2: print('Test MSE: ', mse)
-print('Test correlation: ', cor[0, 1])
+print('-' * 60)
+print('CF mode {} (reference = {})'.format(mode, nRef))
+print('MSE =', mse)
+print('Correlation =', cor[0, 1])
+
+
+#--Personality implementation
+#Parameters
+nRef_person, mode_person = (10, 1)
+
+#Get user distance matrix
+person = np.genfromtxt(r'../data/personality_satisfaction.csv', delimiter=',', skip_header=1)
+u_dist_person = squareform(pdist(person[:, :5], 'cosine')) #0:4 = personality; 5:7 = satisfaction
+
+#Prediction
+predictions_person = CF_loo(u_dist=u_dist_person, nRef=nRef_person, mode=mode_person)
+
+#Evaluation
+mse_person = np.nansum(np.square(predictions_person - prefs) / nMN)
+cor_person = np.corrcoef(predictions_person, prefs)
+print('-' * 60)
+print('Personality mode {} (reference = {})'.format(mode_person, nRef_person))
+print('MSE =', mse_person)
+print('Correlation =', cor_person[0, 1])
 
 
 #--Benchmark
 #Column mean prediction MSE
 mse_nMean = np.nansum(np.square(0 - prefs) / nMN)
-print('Column mean MSE: ', mse_nMean)
+print('-' * 60)
+print('Column mean benchmark')
+print('MSE =', mse_nMean)
