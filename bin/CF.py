@@ -63,7 +63,7 @@ def SVD(matrix, nf=10):
 
 #--Find the best matched raters and make reference
 #Return reference rating vec and corresponding distance vec
-def reference(dist_target, pref_nan, nRef):
+def reference(dist_target, pref_nan, n, nRef):
 
     #Sort the rater by distance and remove self
     reference_rater = np.delete(np.argsort(dist_target), 0)
@@ -89,7 +89,7 @@ def reference(dist_target, pref_nan, nRef):
 #m, n specify the left out rating
 #mode changes the way prediction is computed
 #Return predicted score
-def CF(pref_nan, m, n, nRef=10, mode=0):
+def CF(pref_nan, m, n, nRef, mode):
 
     #Mask the pref_nan to acquire the training data
     pref_train = pref_nan.copy()
@@ -105,7 +105,7 @@ def CF(pref_nan, m, n, nRef=10, mode=0):
     u_dist = SVD(pref_train, nf=20)
 
     #Sort, remove self, and find the best matched raters and their ratings
-    reference_rating, reference_dist = reference(u_dist[m, :], pref_nan, nRef)
+    reference_rating, reference_dist = reference(u_dist[m, :], pref_nan, n, nRef)
 
     #Prediction
     #Subtract column mean to see the prediction of personal preference
@@ -118,6 +118,22 @@ def CF(pref_nan, m, n, nRef=10, mode=0):
     prediction = computation[mode]
 
     return prediction
+
+
+#--Leave-one-out implementation
+#Return predicted score in long-form (de-colmeaned) and CF mode
+def CF_loo(pref_nan, isnan_inv, nM, nRef, mode):
+
+    #Operation
+    predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
+    for m in np.arange(nM):
+        for n in gameRatedByRater[m]:
+            predictions_nan[m, n] = CF(pref_nan, m, n, nRef=nRef, mode=mode)
+
+    #Take non-nan entries and makes into long-form by [isnan_inv] slicing
+    predictions = predictions_nan[isnan_inv]
+    
+    return predictions, mode
 
 
 #--Item similarity prediction of the left out (with an extra similarity matrix)
@@ -155,32 +171,23 @@ print('Total number of ratings:\n', nMN)
 Model
 ------------------------------------------------------------
 '''
-#--Leave-one-out prediction
-#CF mode
-mode = 2
+#--Prediction
+#Leave-one-out CF implementation
+predictions, mode = CF_loo(pref_nan=pref_nan, isnan_inv=isnan_inv, nM=nM, nRef=10, mode=2)
+
+#Subtract column mean for pref matrix and makes it long-form
 nMean = np.broadcast_to(np.nanmean(pref_nan, axis=0), (nM, nN))
-
-#Operation
-predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
-for m in np.arange(nM):
-    for n in gameRatedByRater[m]:
-        predictions_nan[m, n] = CF(pref_nan, m, n, nRef=10, mode=mode)
-
-#Take non-nan entries and makes into long-form by [isnan_inv] slicing
-#Also subtract column mean for pref matrix
-predictions = predictions_nan[isnan_inv]
-pref = pref_nan[isnan_inv] - nMean[isnan_inv]
+prefs = pref_nan[isnan_inv] - nMean[isnan_inv]
 
 
-#--Test MSE
-mse = np.nansum(np.square(predictions - pref) / nMN)
-cor = np.corrcoef(predictions, pref)
-print('Test MSE: ', mse)
+#--Evaluation
+mse = np.nansum(np.square(predictions - prefs) / nMN)
+cor = np.corrcoef(predictions, prefs)
+if mode != 2: print('Test MSE: ', mse)
 print('Test correlation: ', cor[0, 1])
 
 
 #--Benchmark
 #Column mean prediction MSE
-mse_nMean = np.nansum(np.square(0 - pref) / nMN)
-cor_nMean = np.corrcoef(np.broadcast_to(0, nMN), pref)
+mse_nMean = np.nansum(np.square(0 - prefs) / nMN)
 print('Column mean MSE: ', mse_nMean)
