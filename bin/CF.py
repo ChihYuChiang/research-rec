@@ -1,7 +1,14 @@
 import numpy as np
+import tensorflow as tf
+import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
 
 
+'''
+------------------------------------------------------------
+Data
+------------------------------------------------------------
+'''
 #--Preprocess data
 #Return processed matrix, matrix shape, reversed nan index
 def preprocessing():
@@ -27,6 +34,27 @@ def preprocessing():
     return pref_nan, nM, nN, isnan_inv, gameRatedByRater
 
 
+#--Data description
+pref_nan, nM, nN, isnan_inv, gameRatedByRater = preprocessing()
+
+#How many raters rate each game
+print('Number of raters per game:\n', np.sum(isnan_inv, axis=0))
+
+#How many games rated each rater
+print('Number of games rated per rater:\n', np.sum(isnan_inv, axis=1))
+
+#Total num of rating (!= nM * nN)
+nMN = len(np.where(isnan_inv)[0])
+print('Total number of ratings:\n', nMN)
+
+
+
+
+'''
+------------------------------------------------------------
+Component functions
+------------------------------------------------------------
+'''
 #--nan imputation by column mean
 #Return imputed matrix, column mean
 def imputation(matrix):
@@ -146,28 +174,7 @@ def itemSimF(matrix, pref_nan, m, n, nRef=10):
 
 '''
 ------------------------------------------------------------
-Data
-------------------------------------------------------------
-'''
-#--Preprocessing
-pref_nan, nM, nN, isnan_inv, gameRatedByRater = preprocessing()
-
-#How many raters rate each game
-print('Number of raters per game:\n', np.sum(isnan_inv, axis=0))
-
-#How many games rated each rater
-print('Number of games rated per rater:\n', np.sum(isnan_inv, axis=1))
-
-#Total num of rating (!= nM * nN)
-nMN = len(np.where(isnan_inv)[0])
-print('Total number of ratings:\n', nMN)
-
-
-
-
-'''
-------------------------------------------------------------
-Model
+Models
 ------------------------------------------------------------
 '''
 #--Subtract column mean for pref matrix and makes it long-form
@@ -218,16 +225,15 @@ print('-' * 60)
 print('Column mean benchmark')
 print('MSE =', mse_nMean)
 
-np.sum(np.square((predictions + predictions_person) / 2 - prefs) / nMN)
+np.sum(np.square((predictions + predictions_person) / 2 - prefs)) / nMN
 np.corrcoef(predictions + predictions_person, prefs)
 
 
-import tensorflow as tf
-import matplotlib.pyplot as plt
-
+#--CF and personality ensemble
+tf.reset_default_graph()
 learning_rate = 0.01
 w = tf.Variable(0, name='weight', dtype=tf.float32)
-cost = tf.reduce_sum(tf.square((w * predictions + (1 - w) * predictions_person) - prefs) / nMN)
+cost = tf.reduce_sum(tf.square((w * predictions + (1 - w) * predictions_person) - prefs)) / nMN
 optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
 init = tf.global_variables_initializer()
 
@@ -239,7 +245,7 @@ with tf.Session() as sess:
         _, epoch_cost = sess.run([optimizer, cost])
 
         if epoch % 100 == 0:
-            print ("Cost after epoch %i: %f" % (epoch, epoch_cost))
+            print ('Cost after epoch %i: %f' % (epoch, epoch_cost))
         if epoch % 5 == 0:
             costs.append(epoch_cost)
 
@@ -248,9 +254,47 @@ with tf.Session() as sess:
     plt.xlabel('iterations (per fives)')
     plt.title("Learning rate =" + str(learning_rate))
     plt.show()
+    plt.close()
 
     w_trained = sess.run(w)
-    print ("Trained w =", w_trained)
+    print ('Trained w =', w_trained)
 
-np.sum(np.square((w_trained * predictions + (1 - w_trained) * predictions_person) - prefs) / nMN)
+np.sum(np.square((w_trained * predictions + (1 - w_trained) * predictions_person) - prefs)) / nMN
 np.corrcoef(w_trained * predictions + (1 - w_trained) * predictions_person, prefs)
+
+
+#--CF by optimization
+tf.reset_default_graph()
+learning_rate = 0.01
+us = tf.get_variable('us', [215, 20], dtype=tf.float32,
+  initializer=tf.random_uniform_initializer())
+vh = tf.get_variable("vh", [20, 50], dtype=tf.float32,
+  initializer=tf.random_uniform_initializer())
+
+init2 = tf.global_variables_initializer()
+cost2 = tf.reduce_sum(tf.square(tf.boolean_mask(tf.matmul(us, vh), isnan_inv) - prefs)) / nMN
+optimizer2 = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost2)
+
+costs2 = []
+with tf.Session() as sess:
+    sess.run(init2)
+
+    for epoch in range(100000):
+        _, epoch_cost = sess.run([optimizer2, cost2])
+
+        if epoch % 5000 == 0:
+            print ('Cost after epoch %i: %f' % (epoch, epoch_cost))
+        if epoch % 1000 == 0:
+            costs2.append(epoch_cost)
+
+    plt.plot(np.squeeze(costs2))
+    plt.ylabel('cost')
+    plt.xlabel('iterations (per thousands)')
+    plt.title("Learning rate =" + str(learning_rate))
+    plt.show()
+    plt.close()
+
+    out1 = sess.run(cost2)
+    out2 = sess.run(tf.matmul(us, vh))
+
+np.corrcoef(out2[isnan_inv], prefs)
