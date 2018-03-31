@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
+from util import preprocessing
 
 
 '''
@@ -9,31 +10,6 @@ from scipy.spatial.distance import pdist, squareform
 Data
 ------------------------------------------------------------
 '''
-#--Preprocess data
-#Return processed matrix, matrix shape, reversed nan index
-def preprocessing():
-
-    #Load data
-    pref_raw = np.genfromtxt(r'../data/raw_preference2.csv', delimiter=',', skip_header=1)
-    nM_raw, nN_raw = pref_raw.shape
-
-    #Combine sub-measurements to acquire final matrix
-    #Get specific rating: pref_nan[rater, game]
-    pref_nan = (pref_raw[:, np.arange(0, nN_raw, 3)] + pref_raw[:, np.arange(1, nN_raw, 3)] + pref_raw[:, np.arange(2, nN_raw, 3)]) / 3
-
-    #Get final data shape
-    nM, nN = pref_nan.shape
-
-    #Reversed nan index
-    isnan_inv = np.logical_not(np.isnan(pref_nan))
-    naniloc_inv = np.where(isnan_inv)
-
-    #Find game ids of the games rated for each rater
-    gameRatedByRater = [np.take(naniloc_inv[1], np.where(naniloc_inv[0] == i)).flatten() for i in np.arange(nM)]
-
-    return pref_nan, nM, nN, isnan_inv, gameRatedByRater
-
-
 #--Data description
 pref_nan, nM, nN, isnan_inv, gameRatedByRater = preprocessing()
 
@@ -165,11 +141,6 @@ def CF_loo(u_dist, nRef, mode):
     return predictions
 
 
-#--Item similarity prediction of the left out (with an extra similarity matrix)
-def itemSimF(matrix, pref_nan, m, n, nRef=10):
-    pass
-
-
 
 
 '''
@@ -263,12 +234,20 @@ np.sum(np.square((w_trained * predictions + (1 - w_trained) * predictions_person
 np.corrcoef(w_trained * predictions + (1 - w_trained) * predictions_person, prefs)
 
 
+
+
+'''
+------------------------------------------------------------
+Experimental
+------------------------------------------------------------
+'''
 #--CF by optimization
+#Too many parameters, perhaps can use some regularization
 tf.reset_default_graph()
 learning_rate = 0.01
-us = tf.get_variable('us', [215, 20], dtype=tf.float32,
+us = tf.get_variable('us', [215, 1], dtype=tf.float32,
   initializer=tf.random_uniform_initializer())
-vh = tf.get_variable("vh", [20, 50], dtype=tf.float32,
+vh = tf.get_variable("vh", [1, 50], dtype=tf.float32,
   initializer=tf.random_uniform_initializer())
 
 init2 = tf.global_variables_initializer()
