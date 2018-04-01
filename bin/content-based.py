@@ -101,19 +101,20 @@ def cRec(pref_nan, v_dist, m, n, nRef, mode):
     pref_train = pref_nan.copy()
     pref_train[m, n] = np.nan
 
-    #Substract row mean from pref
-    mMean = np.nanmean(pref_nan, axis=1)
-    pref_train -= np.reshape(mMean, (len(mMean), 1))
+    #Substract row and column effects from pref
+    nMean = np.nanmean(pref_nan, axis=0) - np.mean(np.nanmean(pref_nan, axis=0))
+    mMean = np.nanmean(pref_nan, axis=1) - np.mean(np.nanmean(pref_nan, axis=1))
+    pref_train -= np.reshape(nMean, (1, len(nMean))) + np.reshape(mMean, (len(mMean), 1))
 
     #Sort, remove self, and find the best matched raters and their ratings
     reference_rating, reference_dist = reference(v_dist[n, :], pref_nan, m, nRef)
 
     #Prediction
-    #Subtract row mean to see the prediction of item preference
+    #Implement row and column adjustments
     #Dist as weight -> transform back to -1 to 1
     computation = {
-        0: np.mean(reference_rating) - mMean[m],
-        2: np.dot(np.array(reference_rating) - mMean[m], -(np.array(reference_dist) - 1))
+        0: np.mean(reference_rating) - nMean[n] - mMean[m],
+        2: np.dot(np.array(reference_rating) - nMean[n] - mMean[m], -(np.array(reference_dist) - 1))
     }
     prediction = computation[mode]
 
@@ -144,16 +145,16 @@ Models
 ------------------------------------------------------------
 '''
 #--Subtract column mean for pref matrix and makes it long-form
-mMean = np.broadcast_to(np.nanmean(pref_nan, axis=1, keepdims=True), (nM, nN))
-prefs = pref_nan[isnan_inv] - mMean[isnan_inv]
-pref_nan[0,:]
+nMean = np.broadcast_to(np.nanmean(pref_nan, axis=0, keepdims=True), (nM, nN)) - np.mean(np.nanmean(pref_nan, axis=0))
+mMean = np.broadcast_to(np.nanmean(pref_nan, axis=1, keepdims=True), (nM, nN)) - np.mean(np.nanmean(pref_nan, axis=1))
+prefs = pref_nan[isnan_inv] - nMean[isnan_inv]  - mMean[isnan_inv]
 
-#--Leave-one-out CF implementation
+#--Leave-one-out cRec implementation
 #Parameters
-nRef, mode = (2, 0)
+nRef, mode = (1, 2)
 
 #Prediction
-predictions = recLoo(dist=squareform(dist_review), nRef=nRef, mode=mode)
+predictions = recLoo(dist=squareform(dist_triplet), nRef=nRef, mode=mode)
 
 #Evaluation
 mse = np.sum(np.square(predictions - prefs) / nMN)
