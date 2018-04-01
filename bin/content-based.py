@@ -1,11 +1,8 @@
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
-from util import preprocessing
-
-sns.set(color_codes=True)
+from util import preprocessing, scatter
 
 
 '''
@@ -54,11 +51,7 @@ dist_review = pdist(emb_review, 'cosine')
 np.corrcoef(dist_triplet, dist_review)
 
 #Graphing
-dist_df = pd.DataFrame({
-    'dist_triplet': dist_triplet,
-    'dist_review': dist_review
-})
-g = sns.jointplot(x="dist_triplet", y="dist_review", data=dist_df, color="m", kind="reg", scatter_kws={"s": 10})
+scatter([dist_triplet, dist_review], ['dist_triplet', 'dist_review'])
 
 
 
@@ -163,3 +156,6 @@ print('-' * 60)
 print('CRec mode {} (reference = {})'.format(mode, nRef))
 print('MSE =', mse)
 print('Correlation =', cor[0, 1])
+
+#Graphing
+scatter([prefs, predictions], ['prefs', 'predictions'])
