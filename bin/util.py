@@ -30,6 +30,7 @@ def preprocessing():
 
 
 #--Graphing 2-D scatter plot
+#With distribution and linear fitting line
 def scatter(vectors, names):
 
     sns.set(color_codes=True)
@@ -41,3 +42,36 @@ def scatter(vectors, names):
 
     g = sns.jointplot(x=names[0], y=names[1], data=df, color="m", kind="reg", scatter_kws={"s": 10})
     plt.show()
+
+
+#--Leave-one-out implementation
+#Return predicted score in long-form
+def recLoo(recFunc, dist, nRef, mode):
+
+    #Data
+    pref_nan, nM, nN, isnan_inv, gameRatedByRater = preprocessing()
+
+    #Operation
+    predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
+    for m in np.arange(nM):
+        for n in gameRatedByRater[m]:
+            predictions_nan[m, n] = recFunc(pref_nan, dist, m, n, nRef=nRef, mode=mode)
+
+    #Take non-nan entries and makes into long-form by [isnan_inv] slicing
+    predictions = predictions_nan[isnan_inv]
+    
+    return predictions
+
+
+#--Remove row and column effect
+#Return matrix with effects removed (hopefully)
+def deMean(matrix):
+
+    #Compute row and column effects
+    nMean = np.nanmean(matrix, axis=0) - np.mean(np.nanmean(matrix, axis=0))
+    mMean = np.nanmean(matrix, axis=1) - np.mean(np.nanmean(matrix, axis=1))
+    
+    #Compute new matrix removed the effects
+    matrix -= (np.reshape(nMean, (1, len(nMean))) + np.reshape(mMean, (len(mMean), 1)))
+
+    return matrix, nMean, mMean

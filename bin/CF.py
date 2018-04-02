@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
-from util import preprocessing
+from util import preprocessing, scatter, recLoo
 
 
 '''
@@ -125,22 +125,6 @@ def CF(pref_nan, u_dist, m, n, nRef, mode):
     return prediction
 
 
-#--Leave-one-out implementation
-#Return predicted score in long-form (de-colmeaned) and CF mode
-def CF_loo(u_dist, nRef, mode):
-
-    #Operation
-    predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
-    for m in np.arange(nM):
-        for n in gameRatedByRater[m]:
-            predictions_nan[m, n] = CF(pref_nan, u_dist, m, n, nRef=nRef, mode=mode)
-
-    #Take non-nan entries and makes into long-form by [isnan_inv] slicing
-    predictions = predictions_nan[isnan_inv]
-    
-    return predictions
-
-
 
 
 '''
@@ -158,7 +142,7 @@ prefs = pref_nan[isnan_inv] - nMean[isnan_inv]
 nRef, mode = (10, 1)
 
 #Prediction
-predictions = CF_loo(u_dist=None, nRef=nRef, mode=mode)
+predictions = recLoo(recFunc=CF, dist=None, nRef=nRef, mode=mode)
 
 #Evaluation
 mse = np.sum(np.square(predictions - prefs) / nMN)
@@ -178,7 +162,7 @@ person = np.genfromtxt(r'../data/personality_satisfaction.csv', delimiter=',', s
 u_dist_person = squareform(pdist(person[:, :5], 'cosine')) #0:4 = personality; 5:7 = satisfaction
 
 #Prediction
-predictions_person = CF_loo(u_dist=u_dist_person, nRef=nRef_person, mode=mode_person)
+predictions_person = recLoo(recFunc=CF, dist=u_dist_person, nRef=nRef_person, mode=mode_person)
 
 #Evaluation
 mse_person = np.sum(np.square(predictions_person - prefs) / nMN)
@@ -190,7 +174,8 @@ print('Correlation =', cor_person[0, 1])
 
 
 #--Benchmark
-#Column mean prediction MSE
+#Column and row means adjusted prediction
+pref_nan - 
 mse_nMean = np.sum(np.square(0 - prefs) / nMN)
 print('-' * 60)
 print('Column mean benchmark')
@@ -200,6 +185,13 @@ np.sum(np.square((predictions + predictions_person) / 2 - prefs)) / nMN
 np.corrcoef(predictions + predictions_person, prefs)
 
 
+
+
+'''
+------------------------------------------------------------
+Ensemble
+------------------------------------------------------------
+'''
 #--CF and personality ensemble
 tf.reset_default_graph()
 learning_rate = 0.01

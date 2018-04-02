@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
-from util import preprocessing, scatter
+from util import preprocessing, scatter, recLoo, deMean
 
 
 '''
@@ -95,9 +95,7 @@ def cRec(pref_nan, v_dist, m, n, nRef, mode):
     pref_train[m, n] = np.nan
 
     #Substract row and column effects from pref
-    nMean = np.nanmean(pref_nan, axis=0) - np.mean(np.nanmean(pref_nan, axis=0))
-    mMean = np.nanmean(pref_nan, axis=1) - np.mean(np.nanmean(pref_nan, axis=1))
-    pref_train -= np.reshape(nMean, (1, len(nMean))) + np.reshape(mMean, (len(mMean), 1))
+    pref_train, nMean, mMean = deMean(pref_train)
 
     #Sort, remove self, and find the best matched raters and their ratings
     reference_rating, reference_dist = reference(v_dist[n, :], pref_nan, m, nRef)
@@ -114,22 +112,6 @@ def cRec(pref_nan, v_dist, m, n, nRef, mode):
     return prediction
 
 
-#--Leave-one-out implementation
-#Return predicted score in long-form (de-colmeaned) and CF mode
-def recLoo(dist, nRef, mode):
-
-    #Operation
-    predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
-    for m in np.arange(nM):
-        for n in gameRatedByRater[m]:
-            predictions_nan[m, n] = cRec(pref_nan, dist, m, n, nRef=nRef, mode=mode)
-
-    #Take non-nan entries and makes into long-form by [isnan_inv] slicing
-    predictions = predictions_nan[isnan_inv]
-    
-    return predictions
-
-
 
 
 '''
@@ -138,16 +120,15 @@ Models
 ------------------------------------------------------------
 '''
 #--Subtract column mean for pref matrix and makes it long-form
-nMean = np.broadcast_to(np.nanmean(pref_nan, axis=0, keepdims=True), (nM, nN)) - np.mean(np.nanmean(pref_nan, axis=0))
-mMean = np.broadcast_to(np.nanmean(pref_nan, axis=1, keepdims=True), (nM, nN)) - np.mean(np.nanmean(pref_nan, axis=1))
-prefs = pref_nan[isnan_inv] - nMean[isnan_inv]  - mMean[isnan_inv]
+prefs = deMean(pref_nan)[0][isnan_inv]
+
 
 #--Leave-one-out cRec implementation
 #Parameters
-nRef, mode = (1, 2)
+nRef, mode = (15, 0)
 
 #Prediction
-predictions = recLoo(dist=squareform(dist_triplet), nRef=nRef, mode=mode)
+predictions = recLoo(recFunc=cRec, dist=squareform(dist_triplet), nRef=nRef, mode=mode)
 
 #Evaluation
 mse = np.sum(np.square(predictions - prefs) / nMN)
