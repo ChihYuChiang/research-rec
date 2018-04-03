@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
-from util import preprocessing, scatter, recLoo
+from util import preprocessing, scatter, recLoo, deMean
 
 
 '''
@@ -35,17 +35,17 @@ Component functions
 #Return imputed matrix, column mean
 def imputation(matrix):
     
-    #Compute column mean
-    nMean = np.nanmean(matrix, axis=0)
+    #Compute column and row effect
+    _, nMean, mMean = deMean(matrix)
 
     #Find nan iloc
     naniloc = np.where(np.isnan(matrix))
 
     #Insert appropriate value into the matrix where is nan
     #np.take is faster than fancy indexing i.e. nMean[[1, 3, 5]]
-    matrix[naniloc] = np.take(nMean, naniloc[1])
+    matrix[naniloc] = np.nanmean(pref_nan) + np.take(nMean, naniloc[1]) + np.take(mMean, naniloc[0])
 
-    return matrix, nMean
+    return matrix, nMean, mMean
 
 
 #--SVD
@@ -100,7 +100,7 @@ def CF(pref_nan, u_dist, m, n, nRef, mode):
     pref_train[m, n] = np.nan
 
     #Impute nan with column mean
-    pref_train, nMean = imputation(pref_train)
+    pref_train, nMean, mMean = imputation(pref_train)
 
     #If mode 1, substract col mean from pref
     if mode == 1: pref_train -= nMean

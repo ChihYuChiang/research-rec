@@ -125,7 +125,7 @@ prefs = deMean(pref_nan)[0][isnan_inv]
 
 #--Leave-one-out cRec implementation
 #Parameters
-nRef, mode = (15, 0)
+nRef, mode = (6, 0)
 
 #Prediction
 predictions = recLoo(recFunc=cRec, dist=squareform(dist_triplet), nRef=nRef, mode=mode)

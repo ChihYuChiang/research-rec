@@ -65,13 +65,16 @@ def recLoo(recFunc, dist, nRef, mode):
 
 #--Remove row and column effect
 #Return matrix with effects removed (hopefully)
-def deMean(matrix):
+def deMean(matrix_in):
+
+    #Make a hard copy to avoid changing the original matrix in the function
+    matrix_out = np.copy(matrix_in)
 
     #Compute row and column effects
-    nMean = np.nanmean(matrix, axis=0) - np.mean(np.nanmean(matrix, axis=0))
-    mMean = np.nanmean(matrix, axis=1) - np.mean(np.nanmean(matrix, axis=1))
+    nMean = np.nanmean(matrix_out, axis=0) - np.mean(np.nanmean(matrix_out, axis=0))
+    mMean = np.nanmean(matrix_out, axis=1) - np.mean(np.nanmean(matrix_out, axis=1))
     
     #Compute new matrix removed the effects
-    matrix -= (np.reshape(nMean, (1, len(nMean))) + np.reshape(mMean, (len(mMean), 1)))
+    matrix_out -= (np.reshape(nMean, (1, len(nMean))) + np.reshape(mMean, (len(mMean), 1)))
 
-    return matrix, nMean, mMean
+    return matrix_out, nMean, mMean
