@@ -43,9 +43,12 @@ def imputation(matrix):
 
     #Insert appropriate value into the matrix where is nan
     #np.take is faster than fancy indexing i.e. nMean[[1, 3, 5]]
-    matrix[naniloc] = np.nanmean(pref_nan) + np.take(nMean, naniloc[1]) + np.take(mMean, naniloc[0])
+    matrix[naniloc] = np.nanmean(matrix) + np.take(nMean, naniloc[1]) + np.take(mMean, naniloc[0])
 
-    return matrix, nMean, mMean
+    #Substract mean, col and row effects from pref
+    matrix -= (np.reshape(nMean, (1, len(nMean))) + np.reshape(mMean, (len(mMean), 1)))
+
+    return matrix
 
 
 #--SVD
@@ -99,26 +102,22 @@ def CF(pref_nan, u_dist, m, n, nRef, mode):
     pref_train = pref_nan.copy()
     pref_train[m, n] = np.nan
 
-    #Impute nan with column mean
-    pref_train, nMean, mMean = imputation(pref_train)
-
-    #If mode 1, substract col mean from pref
-    if mode == 1: pref_train -= nMean
+    #Impute nan with total mean and adjust by column and row effects
+    pref_train = imputation(pref_train)
 
     #Perform SVD for user distance matrix
     #Or use precomputed distance matrix
     if u_dist is None: u_dist = SVD(pref_train, nf=20)
 
     #Sort, remove self, and find the best matched raters and their ratings
-    reference_rating, reference_dist = reference(u_dist[m, :], pref_nan, n, nRef)
+    reference_rating, reference_dist = reference(u_dist[m, :], pref_train, n, nRef)
 
     #Prediction
-    #Subtract column mean to see the prediction of personal preference
+    #Remove column and row effects
     #Dist as weight -> transform back to -1 to 1
     computation = {
-        0: np.mean(reference_rating) - nMean[n],
-        1: np.mean(reference_rating) - nMean[n],
-        2: np.dot(np.array(reference_rating) - nMean[n], -(np.array(reference_dist) - 1))
+        '0': np.mean(reference_rating),
+        '1': np.dot(np.array(reference_rating), -(np.array(reference_dist) - 1))
     }
     prediction = computation[mode]
 
@@ -132,14 +131,13 @@ def CF(pref_nan, u_dist, m, n, nRef, mode):
 Models
 ------------------------------------------------------------
 '''
-#--Subtract column mean for pref matrix and makes it long-form
-nMean = np.broadcast_to(np.nanmean(pref_nan, axis=0), (nM, nN))
-prefs = pref_nan[isnan_inv] - nMean[isnan_inv]
+#--Subtract column and row effects for pref matrix and makes it long-form
+prefs = deMean(pref_nan)[0][isnan_inv]
 
 
 #--Leave-one-out CF implementation
 #Parameters
-nRef, mode = (10, 1)
+nRef, mode = (10, '0')
 
 #Prediction
 predictions = recLoo(recFunc=CF, dist=None, nRef=nRef, mode=mode)
@@ -152,10 +150,13 @@ print('CF mode {} (reference = {})'.format(mode, nRef))
 print('MSE =', mse)
 print('Correlation =', cor[0, 1])
 
+#Graphing
+scatter([prefs, predictions], ['prefs', 'predictions'])
+
 
 #--Personality implementation
 #Parameters
-nRef_person, mode_person = (10, 1)
+nRef_person, mode_person = (10, '0')
 
 #Get user distance matrix
 person = np.genfromtxt(r'../data/personality_satisfaction.csv', delimiter=',', skip_header=1)
@@ -172,17 +173,8 @@ print('Personality mode {} (reference = {})'.format(mode_person, nRef_person))
 print('MSE =', mse_person)
 print('Correlation =', cor_person[0, 1])
 
-
-#--Benchmark
-#Column and row means adjusted prediction
-pref_nan - 
-mse_nMean = np.sum(np.square(0 - prefs) / nMN)
-print('-' * 60)
-print('Column mean benchmark')
-print('MSE =', mse_nMean)
-
-np.sum(np.square((predictions + predictions_person) / 2 - prefs)) / nMN
-np.corrcoef(predictions + predictions_person, prefs)
+#Graphing
+scatter([prefs, predictions_person], ['prefs', 'predictions_person'])
 
 
 
@@ -193,6 +185,7 @@ Ensemble
 ------------------------------------------------------------
 '''
 #--CF and personality ensemble
+#Initialization
 tf.reset_default_graph()
 learning_rate = 0.01
 w = tf.Variable(0, name='weight', dtype=tf.float32)
@@ -200,6 +193,7 @@ cost = tf.reduce_sum(tf.square((w * predictions + (1 - w) * predictions_person) 
 optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
 init = tf.global_variables_initializer()
 
+#Training
 costs = []
 with tf.Session() as sess:
     sess.run(init)
@@ -220,10 +214,21 @@ with tf.Session() as sess:
     plt.close()
 
     w_trained = sess.run(w)
-    print ('Trained w =', w_trained)
+    print ('Trained w = ', w_trained)
 
-np.sum(np.square((w_trained * predictions + (1 - w_trained) * predictions_person) - prefs)) / nMN
-np.corrcoef(w_trained * predictions + (1 - w_trained) * predictions_person, prefs)
+#Prediction
+predictions_en = w_trained * predictions + (1 - w_trained) * predictions_person
+
+#Evaluation
+mse_en = np.sum(np.square(predictions_en - prefs) / nMN)
+cor_en = np.corrcoef(predictions_en, prefs)
+print('-' * 60)
+print('Ensemble (weight = {})'.format(w_trained))
+print('MSE =', mse_en)
+print('Correlation =', cor_en[0, 1])
+
+#Graphing
+scatter([prefs, predictions_en], ['prefs', 'predictions_en'])
 
 
 

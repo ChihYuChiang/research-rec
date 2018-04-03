@@ -103,8 +103,8 @@ def cRec(pref_nan, v_dist, m, n, nRef, mode):
     #Prediction
     #Dist as weight -> transform back to -1 to 1
     computation = {
-        0: np.mean(reference_rating),
-        1: np.dot(np.array(reference_rating), -(np.array(reference_dist) - 1))
+        '0': np.mean(reference_rating),
+        '1': np.dot(np.array(reference_rating), -(np.array(reference_dist) - 1))
     }
     prediction = computation[mode]
 
@@ -124,7 +124,7 @@ prefs = deMean(pref_nan)[0][isnan_inv]
 
 #--Leave-one-out cRec implementation
 #Parameters
-nRef, mode = (6, 0)
+nRef, mode = (6, '0')
 
 #Prediction
 predictions = recLoo(recFunc=cRec, dist=squareform(dist_triplet), nRef=nRef, mode=mode)
