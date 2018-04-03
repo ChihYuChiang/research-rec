@@ -95,17 +95,16 @@ def cRec(pref_nan, v_dist, m, n, nRef, mode):
     pref_train[m, n] = np.nan
 
     #Substract row and column effects from pref
-    pref_train, nMean, mMean = deMean(pref_train)
+    pref_train = deMean(pref_train)[0]
 
     #Sort, remove self, and find the best matched raters and their ratings
-    reference_rating, reference_dist = reference(v_dist[n, :], pref_nan, m, nRef)
+    reference_rating, reference_dist = reference(v_dist[n, :], pref_train, m, nRef)
 
     #Prediction
-    #Implement row and column adjustments
     #Dist as weight -> transform back to -1 to 1
     computation = {
-        0: np.mean(reference_rating) - nMean[n] - mMean[m],
-        2: np.dot(np.array(reference_rating) - nMean[n] - mMean[m], -(np.array(reference_dist) - 1))
+        0: np.mean(reference_rating),
+        1: np.dot(np.array(reference_rating), -(np.array(reference_dist) - 1))
     }
     prediction = computation[mode]
 
@@ -119,7 +118,7 @@ def cRec(pref_nan, v_dist, m, n, nRef, mode):
 Models
 ------------------------------------------------------------
 '''
-#--Subtract column mean for pref matrix and makes it long-form
+#--Subtract column and row effects for pref matrix and makes it long-form
 prefs = deMean(pref_nan)[0][isnan_inv]
 
 
