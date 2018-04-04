@@ -63,7 +63,7 @@ Component functions
 '''
 #--Find the best matched items and make reference
 #Return reference rating vec and corresponding distance vec
-def reference(dist_target, pref_nan, m, nRef):
+def reference(dist_target, pref_nan, pref_train, m, nRef):
 
     #Sort the item by distance and remove self
     reference_item = np.delete(np.argsort(dist_target), 0)
@@ -79,7 +79,7 @@ def reference(dist_target, pref_nan, m, nRef):
         #Acquire only nRef references
         if len(reference_rating) == nRef: break
 
-        reference_rating.append(pref_nan[m, item])
+        reference_rating.append(pref_train[m, item])
         reference_dist.append(dist_target[item])
 
     return reference_rating, reference_dist
@@ -98,7 +98,7 @@ def cRec(pref_nan, v_dist, m, n, nRef, mode):
     pref_train = deMean(pref_train)[0]
 
     #Sort, remove self, and find the best matched raters and their ratings
-    reference_rating, reference_dist = reference(v_dist[n, :], pref_train, m, nRef)
+    reference_rating, reference_dist = reference(v_dist[n, :], pref_nan, pref_train, m, nRef)
 
     #Prediction
     #Dist as weight -> transform back to -1 to 1
@@ -124,18 +124,18 @@ prefs = deMean(pref_nan)[0][isnan_inv]
 
 #--Leave-one-out cRec implementation
 #Parameters
-nRef, mode = (6, '0')
+nRef, mode = (5, '0')
 
 #Prediction
-predictions = recLoo(recFunc=cRec, dist=squareform(dist_triplet), nRef=nRef, mode=mode)
+predictions_c = recLoo(recFunc=cRec, dist=squareform(dist_triplet), nRef=nRef, mode=mode)
 
 #Evaluation
-mse = np.sum(np.square(predictions - prefs) / nMN)
-cor = np.corrcoef(predictions, prefs)
+mse_c = np.sum(np.square(predictions_c - prefs) / nMN)
+cor_c = np.corrcoef(predictions_c, prefs)
 print('-' * 60)
 print('CRec mode {} (reference = {})'.format(mode, nRef))
-print('MSE =', mse)
-print('Correlation =', cor[0, 1])
+print('MSE =', mse_c)
+print('Correlation =', cor_c[0, 1])
 
 #Graphing
-scatter([prefs, predictions], ['prefs', 'predictions'])
+scatter([prefs, predictions_c], ['prefs', 'predictions_c'])

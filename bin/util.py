@@ -2,6 +2,19 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+import tensorflow as tf
+
+#--Flatten list (recursive)
+#Parameter: l, a list
+#Return: a flattened list as a generator
+def flattenList(l):
+    import collections
+    for el in l:
+        if isinstance(el, collections.Sequence) and not isinstance(el, (str, bytes)):
+            yield from flattenList(el)
+        else:
+            yield el
+
 
 #--Preprocess data
 #Return processed matrix, matrix shape, reversed nan index
@@ -78,3 +91,40 @@ def deMean(matrix_in):
     matrix_out -= (np.reshape(nMean, (1, len(nMean))) + np.reshape(mMean, (len(mMean), 1)))
 
     return matrix_out, nMean, mMean
+
+
+#--Ensemble model weighting
+def ensembleWeight(predictionStack, prefs, nEpoch=2000):
+
+    #Initialization
+    #Minimize MSE
+    tf.reset_default_graph()
+    learning_rate = 0.01
+    w = tf.Variable(np.zeros((len(predictionStack), 1)), name='weight', dtype=tf.float32)
+    cost = tf.reduce_mean(tf.square(tf.reduce_sum(predictionStack * w, axis=0) - prefs))
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
+    init = tf.global_variables_initializer()
+
+    #Training
+    costs = []
+    with tf.Session() as sess:
+        sess.run(init)
+
+        for epoch in range(nEpoch):
+            _, epoch_cost = sess.run([optimizer, cost])
+
+            if epoch % 100 == 0:
+                print ('Cost after epoch %i: %f' % (epoch, epoch_cost))
+            if epoch % 5 == 0:
+                costs.append(epoch_cost)
+
+        plt.plot(np.squeeze(costs))
+        plt.ylabel('cost')
+        plt.xlabel('iterations (per fives)')
+        plt.title("Learning rate =" + str(learning_rate))
+        plt.show()
+        plt.close()
+
+        w_trained = sess.run(w)
+
+    return w_trained

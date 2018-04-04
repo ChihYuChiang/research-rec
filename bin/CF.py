@@ -1,8 +1,7 @@
 import numpy as np
-import tensorflow as tf
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
-from util import preprocessing, scatter, recLoo, deMean
+from util import *
 
 
 '''
@@ -70,7 +69,7 @@ def SVD(matrix, nf=10):
 
 #--Find the best matched raters and make reference
 #Return reference rating vec and corresponding distance vec
-def reference(dist_target, pref_nan, n, nRef):
+def reference(dist_target, pref_nan, pref_train, n, nRef):
 
     #Sort the rater by distance and remove self
     reference_rater = np.delete(np.argsort(dist_target), 0)
@@ -86,7 +85,7 @@ def reference(dist_target, pref_nan, n, nRef):
         #Acquire only nRef references
         if len(reference_rating) == nRef: break
 
-        reference_rating.append(pref_nan[rater, n])
+        reference_rating.append(pref_train[rater, n])
         reference_dist.append(dist_target[rater])
 
     return reference_rating, reference_dist
@@ -110,7 +109,7 @@ def CF(pref_nan, u_dist, m, n, nRef, mode):
     if u_dist is None: u_dist = SVD(pref_train, nf=20)
 
     #Sort, remove self, and find the best matched raters and their ratings
-    reference_rating, reference_dist = reference(u_dist[m, :], pref_train, n, nRef)
+    reference_rating, reference_dist = reference(u_dist[m, :], pref_nan, pref_train, n, nRef)
 
     #Prediction
     #Remove column and row effects
@@ -184,46 +183,20 @@ scatter([prefs, predictions_person], ['prefs', 'predictions_person'])
 Ensemble
 ------------------------------------------------------------
 '''
-#--CF and personality ensemble
-#Initialization
-tf.reset_default_graph()
-learning_rate = 0.01
-w = tf.Variable(0, name='weight', dtype=tf.float32)
-cost = tf.reduce_sum(tf.square((w * predictions + (1 - w) * predictions_person) - prefs)) / nMN
-optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
-init = tf.global_variables_initializer()
-
+#--CF and personality (and content based) ensemble
 #Training
-costs = []
-with tf.Session() as sess:
-    sess.run(init)
-
-    for epoch in range(2000):
-        _, epoch_cost = sess.run([optimizer, cost])
-
-        if epoch % 100 == 0:
-            print ('Cost after epoch %i: %f' % (epoch, epoch_cost))
-        if epoch % 5 == 0:
-            costs.append(epoch_cost)
-
-    plt.plot(np.squeeze(costs))
-    plt.ylabel('cost')
-    plt.xlabel('iterations (per fives)')
-    plt.title("Learning rate =" + str(learning_rate))
-    plt.show()
-    plt.close()
-
-    w_trained = sess.run(w)
-    print ('Trained w = ', w_trained)
+predictionStack = np.stack([predictions, predictions_person, predictions_c])
+w_trained = ensembleWeight(predictionStack, prefs, nEpoch=2000)
+w_formatted = [w for w in flattenList(w_trained.tolist())]
 
 #Prediction
-predictions_en = w_trained * predictions + (1 - w_trained) * predictions_person
+predictions_en = np.sum(w_trained * predictionStack, axis=0)
 
 #Evaluation
 mse_en = np.sum(np.square(predictions_en - prefs) / nMN)
 cor_en = np.corrcoef(predictions_en, prefs)
 print('-' * 60)
-print('Ensemble (weight = {})'.format(w_trained))
+print('Ensemble\n(weight = {})'.format(w_formatted))
 print('MSE =', mse_en)
 print('Correlation =', cor_en[0, 1])
 
