@@ -69,7 +69,7 @@ def SVD(matrix, nf=10):
 
 #--Find the best matched raters and make reference
 #Return reference rating vec and corresponding distance vec
-def reference(dist_target, pref_nan, pref_train, n, nRef):
+def reference_byRater(dist_target, pref_nan, pref_train, n, nRef):
 
     #Sort the rater by distance and remove self
     reference_rater = np.delete(np.argsort(dist_target), 0)
@@ -109,7 +109,7 @@ def CF(pref_nan, u_dist, m, n, nRef, mode):
     if u_dist is None: u_dist = SVD(pref_train, nf=20)
 
     #Sort, remove self, and find the best matched raters and their ratings
-    reference_rating, reference_dist = reference(u_dist[m, :], pref_nan, pref_train, n, nRef)
+    reference_rating, reference_dist = reference_byRater(u_dist[m, :], pref_nan, pref_train, n, nRef)
 
     #Prediction
     #Remove column and row effects

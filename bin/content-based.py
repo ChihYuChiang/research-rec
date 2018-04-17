@@ -63,7 +63,7 @@ Component functions
 '''
 #--Find the best matched items and make reference
 #Return reference rating vec and corresponding distance vec
-def reference(dist_target, pref_nan, pref_train, m, nRef):
+def reference_byItem(dist_target, pref_nan, pref_train, m, nRef):
 
     #Sort the item by distance and remove self
     reference_item = np.delete(np.argsort(dist_target), 0)
@@ -98,7 +98,7 @@ def cRec(pref_nan, v_dist, m, n, nRef, mode):
     pref_train = deMean(pref_train)[0]
 
     #Sort, remove self, and find the best matched raters and their ratings
-    reference_rating, reference_dist = reference(v_dist[n, :], pref_nan, pref_train, m, nRef)
+    reference_rating, reference_dist = reference_byItem(v_dist[n, :], pref_nan, pref_train, m, nRef)
 
     #Prediction
     #Dist as weight -> transform back to -1 to 1
