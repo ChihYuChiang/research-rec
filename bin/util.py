@@ -128,3 +128,22 @@ def ensembleWeight(predictionStack, prefs, nEpoch=2000):
         w_trained = sess.run(w)
 
     return w_trained
+
+
+#--Implement with different numbers of reference
+def multiImplement(nRef, implementation, titleLabel):
+    results = { 'nRef': [], 'cor': [] }
+
+    #Record result from each implementation
+    for i in nRef:
+        _, cor = implementation(i)
+        results['nRef'].append(i)
+        results['cor'].append(cor)
+
+    #Line plot
+    plt.plot(results['nRef'],  results['cor'])
+    plt.title(titleLabel + ': Correlation by number of reference')
+    plt.xlabel('Number of reference')
+    plt.ylabel('Correlation with the real score')
+    plt.show()
+    plt.close()

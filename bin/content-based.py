@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
-from util import preprocessing, scatter, recLoo, deMean
+from util import preprocessing, scatter, recLoo, deMean, multiImplement
 
 
 '''
@@ -123,19 +123,30 @@ prefs = deMean(pref_nan)[0][isnan_inv]
 
 
 #--Leave-one-out cRec implementation
-#Parameters
-nRef, mode = (5, '0')
+def implementation_c(nRef, graph=False):
+    
+    #Parameters
+    nRef, mode = (nRef, '0')
 
-#Prediction
-predictions_c = recLoo(recFunc=cRec, dist=squareform(dist_triplet), nRef=nRef, mode=mode)
+    #Prediction
+    predictions_c = recLoo(recFunc=cRec, dist=squareform(dist_triplet), nRef=nRef, mode=mode)
 
-#Evaluation
-mse_c = np.sum(np.square(predictions_c - prefs) / nMN)
-cor_c = np.corrcoef(predictions_c, prefs)
-print('-' * 60)
-print('CRec mode {} (reference = {})'.format(mode, nRef))
-print('MSE =', mse_c)
-print('Correlation =', cor_c[0, 1])
+    #Evaluation
+    mse_c = np.sum(np.square(predictions_c - prefs) / nMN)
+    cor_c = np.corrcoef(predictions_c, prefs)
+    print('-' * 60)
+    print('CRec mode {} (reference = {})'.format(mode, nRef))
+    print('MSE =', mse_c)
+    print('Correlation =', cor_c[0, 1])
 
-#Graphing
-scatter([prefs, predictions_c], ['prefs', 'predictions_c'])
+    #Graphing
+    if graph: scatter([prefs, predictions_c], ['prefs', 'predictions_c'])
+
+    #Return the predicted value
+    return predictions_c, cor_c[0, 1]
+
+#Implement
+predictions_c, _ = implementation_c(5, graph=True)
+
+#Implement with different numbers of reference
+multiImplement(np.arange(1, 10), implementation_c, 'Content-based')

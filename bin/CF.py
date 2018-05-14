@@ -135,45 +135,67 @@ prefs = deMean(pref_nan)[0][isnan_inv]
 
 
 #--Leave-one-out CF implementation
-#Parameters
-nRef, mode = (10, '0')
+def implementation_cf(nRef, graph=False):
 
-#Prediction
-predictions = recLoo(recFunc=CF, dist=None, nRef=nRef, mode=mode)
+    #Parameters
+    nRef, mode = (nRef, '0')
 
-#Evaluation
-mse = np.sum(np.square(predictions - prefs) / nMN)
-cor = np.corrcoef(predictions, prefs)
-print('-' * 60)
-print('CF mode {} (reference = {})'.format(mode, nRef))
-print('MSE =', mse)
-print('Correlation =', cor[0, 1])
+    #Prediction
+    predictions = recLoo(recFunc=CF, dist=None, nRef=nRef, mode=mode)
 
-#Graphing
-scatter([prefs, predictions], ['prefs', 'predictions'])
+    #Evaluation
+    mse = np.sum(np.square(predictions - prefs) / nMN)
+    cor = np.corrcoef(predictions, prefs)
+    print('-' * 60)
+    print('CF mode {} (reference = {})'.format(mode, nRef))
+    print('MSE =', mse)
+    print('Correlation =', cor[0, 1])
+
+    #Graphing
+    if graph: scatter([prefs, predictions], ['prefs', 'predictions'])
+
+    #Return the predicted value
+    return predictions, cor[0, 1]
+
+#Implement
+predictions, _ = implementation_cf(10, graph=True)
+
+#Implement with different numbers of reference
+multiImplement(np.arange(1, 21), implementation_cf, 'Cf')
 
 
 #--Personality implementation
-#Parameters
-nRef_person, mode_person = (10, '0')
+def implementation_person(nRef, graph=False):
 
-#Get user distance matrix
-person = np.genfromtxt(r'../data/personality_satisfaction.csv', delimiter=',', skip_header=1)
-u_dist_person = squareform(pdist(person[:, :5], 'cosine')) #0:4 = personality; 5:7 = satisfaction
+    #Parameters
+    nRef_person, mode_person = (nRef, '0')
 
-#Prediction
-predictions_person = recLoo(recFunc=CF, dist=u_dist_person, nRef=nRef_person, mode=mode_person)
+    #Get user distance matrix
+    person = np.genfromtxt(r'../data/personality_satisfaction.csv', delimiter=',', skip_header=1)
+    u_dist_person = squareform(pdist(person[:, :5], 'cosine')) #0:4 = personality; 5:7 = satisfaction
 
-#Evaluation
-mse_person = np.sum(np.square(predictions_person - prefs) / nMN)
-cor_person = np.corrcoef(predictions_person, prefs)
-print('-' * 60)
-print('Personality mode {} (reference = {})'.format(mode_person, nRef_person))
-print('MSE =', mse_person)
-print('Correlation =', cor_person[0, 1])
+    #Prediction
+    predictions_person = recLoo(recFunc=CF, dist=u_dist_person, nRef=nRef_person, mode=mode_person)
 
-#Graphing
-scatter([prefs, predictions_person], ['prefs', 'predictions_person'])
+    #Evaluation
+    mse_person = np.sum(np.square(predictions_person - prefs) / nMN)
+    cor_person = np.corrcoef(predictions_person, prefs)
+    print('-' * 60)
+    print('Personality mode {} (reference = {})'.format(mode_person, nRef_person))
+    print('MSE =', mse_person)
+    print('Correlation =', cor_person[0, 1])
+
+    #Graphing
+    if graph: scatter([prefs, predictions_person], ['prefs', 'predictions_person'])
+
+    #Return the predicted value
+    return predictions_person, cor_person[0, 1]
+
+#Implement
+predictions_person, _ = implementation_person(10, graph=True)
+
+#Implement with different numbers of reference
+multiImplement(np.arange(1, 21), implementation_person, 'Person')
 
 
 
