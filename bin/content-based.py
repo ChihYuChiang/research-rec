@@ -149,4 +149,4 @@ def implementation_c(nRef, graph=False):
 predictions_c, _ = implementation_c(5, graph=True)
 
 #Implement with different numbers of reference
-multiImplement(np.arange(1, 10), implementation_c, 'Content-based')
+multiImplement(np.arange(1, 11), implementation_c, 'Content-based')

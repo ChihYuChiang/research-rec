@@ -161,7 +161,7 @@ def implementation_cf(nRef, graph=False):
 predictions, _ = implementation_cf(10, graph=True)
 
 #Implement with different numbers of reference
-multiImplement(np.arange(1, 21), implementation_cf, 'Cf')
+multiImplement(np.arange(1, 101), implementation_cf, 'Cf')
 
 
 #--Personality implementation
@@ -195,7 +195,7 @@ def implementation_person(nRef, graph=False):
 predictions_person, _ = implementation_person(10, graph=True)
 
 #Implement with different numbers of reference
-multiImplement(np.arange(1, 21), implementation_person, 'Person')
+multiImplement(np.arange(1, 101), implementation_person, 'Person')
 
 
 
