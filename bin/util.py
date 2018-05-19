@@ -59,7 +59,7 @@ def scatter(vectors, names):
 
 #--Leave-one-out implementation
 #Return predicted score in long-form
-def recLoo(recFunc, dist, nRef, mode):
+def recLoo(recFunc, dist, nRef, mode, **kwargs):
 
     #Data
     pref_nan, nM, nN, isnan_inv, gameRatedByRater = preprocessing()
@@ -68,7 +68,7 @@ def recLoo(recFunc, dist, nRef, mode):
     predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
     for m in np.arange(nM):
         for n in gameRatedByRater[m]:
-            predictions_nan[m, n] = recFunc(pref_nan, dist, m, n, nRef=nRef, mode=mode)
+            predictions_nan[m, n] = recFunc(pref_nan, dist, m, n, nRef=nRef, mode=mode, **kwargs)
 
     #Take non-nan entries and makes into long-form by [isnan_inv] slicing
     predictions = predictions_nan[isnan_inv]
@@ -131,17 +131,35 @@ def ensembleWeight(predictionStack, prefs, nEpoch=2000):
 
 
 #--Implement with different numbers of reference
-def multiImplement(nRef, implementation, titleLabel):
-    results = { 'nRef': [], 'cor': [] }
+def multiImplement(nRef, implementation, nRand, titleLabel):
+    
+    #--Perform random experiments (randomly-picked reference)
+    if nRand:
+        results = np.zeros((max(nRef), nRand))
+
+        for i in nRef:
+            for j in np.arange(0, nRand):
+                _, cor = implementation(i, ifRand=True)
+                results[i - 1, j] = cor
+        
+        #Draw each random result
+        for j in np.arange(0, nRand): plt.plot(nRef, results[:, j], color='#f6f7eb')
+
+        #Draw random mean
+        plt.plot(nRef, np.mean(results, axis=1), color='#393e41')
+
+
+    #--Real implementation
+    results_true = { 'nRef': [], 'cor': [] }
 
     #Record result from each implementation
     for i in nRef:
         _, cor = implementation(i)
-        results['nRef'].append(i)
-        results['cor'].append(cor)
+        results_true['nRef'].append(i)
+        results_true['cor'].append(cor)
 
     #Line plot
-    plt.plot(results['nRef'],  results['cor'])
+    plt.plot(results_true['nRef'],  results_true['cor'], color='#e94f37')
     plt.title(titleLabel + ': Correlation by number of reference')
     plt.xlabel('Number of reference')
     plt.ylabel('Correlation with the real score')

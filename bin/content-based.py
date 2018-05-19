@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
@@ -63,11 +64,16 @@ Component functions
 '''
 #--Find the best matched items and make reference
 #Return reference rating vec and corresponding distance vec
-def reference_byItem(dist_target, pref_nan, pref_train, m, nRef):
+def reference_byItem(dist_target, pref_nan, pref_train, m, nRef, ifRand):
 
     #Sort the item by distance and remove self
     reference_item = np.delete(np.argsort(dist_target), 0)
 
+    #If in random experiment, randomize order
+    if ifRand == True:
+        tmp = reference_item.tolist()
+        reference_item = random.sample(tmp, k=len(tmp))
+        
     #Make reference rating and distance
     reference_rating = []
     reference_dist = []
@@ -88,7 +94,7 @@ def reference_byItem(dist_target, pref_nan, pref_train, m, nRef):
 #--Score prediction of the left out
 #m, n specify the left out rating
 #Return predicted score
-def cRec(pref_nan, v_dist, m, n, nRef, mode):
+def cRec(pref_nan, v_dist, m, n, nRef, mode, ifRand=False):
 
     #Mask the pref_nan to acquire the training data
     pref_train = pref_nan.copy()
@@ -98,7 +104,7 @@ def cRec(pref_nan, v_dist, m, n, nRef, mode):
     pref_train = deMean(pref_train)[0]
 
     #Sort, remove self, and find the best matched raters and their ratings
-    reference_rating, reference_dist = reference_byItem(v_dist[n, :], pref_nan, pref_train, m, nRef)
+    reference_rating, reference_dist = reference_byItem(v_dist[n, :], pref_nan, pref_train, m, nRef, ifRand)
 
     #Prediction
     #Dist as weight -> transform back to -1 to 1
@@ -123,13 +129,13 @@ prefs = deMean(pref_nan)[0][isnan_inv]
 
 
 #--Leave-one-out cRec implementation
-def implementation_c(nRef, graph=False):
+def implementation_c(nRef, ifRand=False, graph=False):
     
     #Parameters
     nRef, mode = (nRef, '0')
 
     #Prediction
-    predictions_c = recLoo(recFunc=cRec, dist=squareform(dist_triplet), nRef=nRef, mode=mode)
+    predictions_c = recLoo(recFunc=cRec, dist=squareform(dist_review), nRef=nRef, mode=mode, ifRand=ifRand)
 
     #Evaluation
     mse_c = np.sum(np.square(predictions_c - prefs) / nMN)
@@ -149,4 +155,4 @@ def implementation_c(nRef, graph=False):
 predictions_c, _ = implementation_c(5, graph=True)
 
 #Implement with different numbers of reference
-multiImplement(np.arange(1, 11), implementation_c, 'Content-based')
+multiImplement(np.arange(1, 13), implementation_c, nRand=30, titleLabel='Content-based (text)')
