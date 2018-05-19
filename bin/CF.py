@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
 from util import *
@@ -69,10 +70,15 @@ def SVD(matrix, nf=10):
 
 #--Find the best matched raters and make reference
 #Return reference rating vec and corresponding distance vec
-def reference_byRater(dist_target, pref_nan, pref_train, n, nRef):
+def reference_byRater(dist_target, pref_nan, pref_train, n, nRef, ifRand):
 
     #Sort the rater by distance and remove self
     reference_rater = np.delete(np.argsort(dist_target), 0)
+
+    #If in random experiment, randomize order
+    if ifRand == True:
+        tmp = reference_rater.tolist()
+        reference_rater = random.sample(tmp, k=len(tmp))
 
     #Make reference rating and distance
     reference_rating = []
@@ -95,7 +101,7 @@ def reference_byRater(dist_target, pref_nan, pref_train, n, nRef):
 #m, n specify the left out rating
 #mode changes the way prediction is computed
 #Return predicted score
-def CF(pref_nan, u_dist, m, n, nRef, mode):
+def CF(pref_nan, u_dist, m, n, nRef, mode, ifRand):
 
     #Mask the pref_nan to acquire the training data
     pref_train = pref_nan.copy()
@@ -109,7 +115,7 @@ def CF(pref_nan, u_dist, m, n, nRef, mode):
     if u_dist is None: u_dist = SVD(pref_train, nf=20)
 
     #Sort, remove self, and find the best matched raters and their ratings
-    reference_rating, reference_dist = reference_byRater(u_dist[m, :], pref_nan, pref_train, n, nRef)
+    reference_rating, reference_dist = reference_byRater(u_dist[m, :], pref_nan, pref_train, n, nRef, ifRand)
 
     #Prediction
     #Remove column and row effects
@@ -135,13 +141,13 @@ prefs = deMean(pref_nan)[0][isnan_inv]
 
 
 #--Leave-one-out CF implementation
-def implementation_cf(nRef, graph=False):
+def implementation_cf(nRef, ifRand=False, graph=False):
 
     #Parameters
     nRef, mode = (nRef, '0')
 
     #Prediction
-    predictions = recLoo(recFunc=CF, dist=None, nRef=nRef, mode=mode)
+    predictions = recLoo(recFunc=CF, dist=None, nRef=nRef, mode=mode, ifRand=ifRand)
 
     #Evaluation
     mse = np.sum(np.square(predictions - prefs) / nMN)
@@ -161,11 +167,11 @@ def implementation_cf(nRef, graph=False):
 predictions, _ = implementation_cf(10, graph=True)
 
 #Implement with different numbers of reference
-multiImplement(np.arange(1, 101), implementation_cf, 'Cf')
+multiImplement(np.arange(1, 81), implementation_cf, nRand=2, titleLabel='Cf')
 
 
 #--Personality implementation
-def implementation_person(nRef, graph=False):
+def implementation_person(nRef, ifRand=False, graph=False):
 
     #Parameters
     nRef_person, mode_person = (nRef, '0')
@@ -175,7 +181,7 @@ def implementation_person(nRef, graph=False):
     u_dist_person = squareform(pdist(person[:, :5], 'cosine')) #0:4 = personality; 5:7 = satisfaction
 
     #Prediction
-    predictions_person = recLoo(recFunc=CF, dist=u_dist_person, nRef=nRef_person, mode=mode_person)
+    predictions_person = recLoo(recFunc=CF, dist=u_dist_person, nRef=nRef_person, mode=mode_person, ifRand=ifRand)
 
     #Evaluation
     mse_person = np.sum(np.square(predictions_person - prefs) / nMN)
@@ -195,7 +201,7 @@ def implementation_person(nRef, graph=False):
 predictions_person, _ = implementation_person(10, graph=True)
 
 #Implement with different numbers of reference
-multiImplement(np.arange(1, 101), implementation_person, 'Person')
+multiImplement(np.arange(1, 81), implementation_person, nRand=30, titleLabel='Person')
 
 
 
@@ -237,6 +243,8 @@ Experimental
 #Too many parameters, perhaps can use some regularization
 tf.reset_default_graph()
 learning_rate = 0.01
+
+#Compute 2 matrices, whose multiplication approximates the original user-restaurant matrix
 us = tf.get_variable('us', [215, 1], dtype=tf.float32,
   initializer=tf.random_uniform_initializer())
 vh = tf.get_variable("vh", [1, 50], dtype=tf.float32,

@@ -94,7 +94,7 @@ def reference_byItem(dist_target, pref_nan, pref_train, m, nRef, ifRand):
 #--Score prediction of the left out
 #m, n specify the left out rating
 #Return predicted score
-def cRec(pref_nan, v_dist, m, n, nRef, mode, ifRand=False):
+def cRec(pref_nan, v_dist, m, n, nRef, mode, ifRand):
 
     #Mask the pref_nan to acquire the training data
     pref_train = pref_nan.copy()
