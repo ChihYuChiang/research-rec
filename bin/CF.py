@@ -212,11 +212,11 @@ Ensemble
 ------------------------------------------------------------
 '''
 #--CF and personality (and content based) ensemble
-def ensemble(predictions, graph=False):
+def ensemble(predictions, epoch=2000, graph=False):
 
     #Training
     predictionStack = np.stack(predictions)
-    w_trained = ensembleWeight(predictionStack, prefs, nEpoch=2000, graph=graph)
+    w_trained = ensembleWeight(predictionStack, prefs, nEpoch=epoch, graph=graph)
     w_formatted = [w for w in flattenList(w_trained.tolist())]
 
     #Prediction
@@ -237,7 +237,7 @@ def ensemble(predictions, graph=False):
     return predictions_en, cor_en[0, 1], w_formatted
 
 #Implement
-predictions_en, _, __ = ensemble([implementation_cf(10)[0], implementation_person(10)[0]], graph=True)
+predictions_en, _, __ = ensemble([implementation_cf(45)[0], implementation_person(45)[0]], epoch=20000, graph=True)
 
 
 #--Implement with different numbers of reference
@@ -251,7 +251,7 @@ for i in N_REF:
     predictions_person, cor_person = implementation_person(i)
     cors_person.append(cor_person)
 
-    _, cor_en, w = ensemble([predictions_cf, predictions_person])
+    _, cor_en, w = ensemble([predictions_cf, predictions_person], epoch=int(round((i ** 0.5) * 5000)))
     cors_en.append(cor_en)
     w_cf.append(w[0])
     w_person.append(w[1])
