@@ -132,7 +132,7 @@ prefs = deMean(pref_nan)[0][isnan_inv]
 def implementation_c(nRef, ifRand=False, graph=False):
     
     #Parameters
-    nRef, mode = (nRef, '0')
+    nRef, mode = (nRef, '1')
 
     #Prediction
     predictions_c = recLoo(recFunc=cRec, dist=squareform(dist_review), nRef=nRef, mode=mode, ifRand=ifRand)
@@ -155,4 +155,4 @@ def implementation_c(nRef, ifRand=False, graph=False):
 predictions_c, _ = implementation_c(5, graph=True)
 
 #Implement with different numbers of reference
-multiImplement(np.arange(1, 13), implementation_c, nRand=30, titleLabel='Content-based (text)')
+multiImplement(np.arange(1, 13), implementation_c, nRand=0, titleLabel='Content-based')

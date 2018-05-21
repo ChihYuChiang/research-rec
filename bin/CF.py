@@ -167,7 +167,7 @@ def implementation_cf(nRef, ifRand=False, graph=False):
 predictions, _ = implementation_cf(10, graph=True)
 
 #Implement with different numbers of reference
-multiImplement(np.arange(1, 81), implementation_cf, nRand=2, titleLabel='Cf')
+multiImplement(np.arange(1, 81), implementation_cf, nRand=30, titleLabel='Cf')
 
 
 #--Personality implementation
@@ -212,24 +212,70 @@ Ensemble
 ------------------------------------------------------------
 '''
 #--CF and personality (and content based) ensemble
-#Training
-predictionStack = np.stack([predictions, predictions_person, predictions_c])
-w_trained = ensembleWeight(predictionStack, prefs, nEpoch=2000)
-w_formatted = [w for w in flattenList(w_trained.tolist())]
+def ensemble(predictions, graph=False):
 
-#Prediction
-predictions_en = np.sum(w_trained * predictionStack, axis=0)
+    #Training
+    predictionStack = np.stack(predictions)
+    w_trained = ensembleWeight(predictionStack, prefs, nEpoch=2000, graph=graph)
+    w_formatted = [w for w in flattenList(w_trained.tolist())]
 
-#Evaluation
-mse_en = np.sum(np.square(predictions_en - prefs) / nMN)
-cor_en = np.corrcoef(predictions_en, prefs)
-print('-' * 60)
-print('Ensemble\n(weight = {})'.format(w_formatted))
-print('MSE =', mse_en)
-print('Correlation =', cor_en[0, 1])
+    #Prediction
+    predictions_en = np.sum(w_trained * predictionStack, axis=0)
 
-#Graphing
-scatter([prefs, predictions_en], ['prefs', 'predictions_en'])
+    #Evaluation
+    mse_en = np.sum(np.square(predictions_en - prefs) / nMN)
+    cor_en = np.corrcoef(predictions_en, prefs)
+    print('-' * 60)
+    print('Ensemble\nweight = {}'.format(w_formatted))
+    print('MSE =', mse_en)
+    print('Correlation =', cor_en[0, 1])
+
+    #Graphing
+    if graph: scatter([prefs, predictions_en], ['prefs', 'predictions_en'])
+
+    #Return the predicted value
+    return predictions_en, cor_en[0, 1], w_formatted
+
+#Implement
+predictions_en, _, __ = ensemble([implementation_cf(10)[0], implementation_person(10)[0]], graph=True)
+
+
+#--Implement with different numbers of reference
+cors_cf, cors_person, cors_en, w_cf, w_person = [], [], [], [], []
+
+N_REF = np.arange(1, 81)
+for i in N_REF:
+    predictions_cf, cor_cf = implementation_cf(i)
+    cors_cf.append(cor_cf)
+
+    predictions_person, cor_person = implementation_person(i)
+    cors_person.append(cor_person)
+
+    _, cor_en, w = ensemble([predictions_cf, predictions_person])
+    cors_en.append(cor_en)
+    w_cf.append(w[0])
+    w_person.append(w[1])
+
+#Graph for the correlations
+plt.plot(N_REF, cors_cf, label='CF')
+plt.plot(N_REF, cors_person, label='Personality')
+plt.plot(N_REF, cors_en, label='Combined')
+plt.legend(loc=(1.03, 0.6))
+plt.title('Ensemble correlation by number of reference')
+plt.xlabel('Number of reference')
+plt.ylabel('Correlation with the real score')
+plt.show()
+plt.close()
+
+#Graph for the ensemble weights
+fig, ax = plt.subplots()
+ax.bar(N_REF, w_cf, label='CF')
+ax.bar(N_REF, w_person, bottom=w_cf, label='Personality')
+ax.legend(loc=(1.03, 0.6))
+ax.axhline(0.5, ls='--', color='r')
+ax.set(xlabel='Number of reference', ylabel='Weight proportion', title='Ensemble weight proportion by number of reference')
+plt.show()
+plt.close()
 
 
 
