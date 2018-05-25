@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import random
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
@@ -22,6 +23,15 @@ print('Number of games rated per rater:\n', np.sum(isnan_inv, axis=1))
 #Total num of rating (!= nM * nN)
 nMN = len(np.where(isnan_inv)[0])
 print('Total number of ratings:\n', nMN)
+
+
+#--Survey data
+#Personality distance
+person = np.genfromtxt(r'../data/personality_satisfaction.csv', delimiter=',', skip_header=1)
+u_dist_person = squareform(pdist(person[:, :5], 'cosine')) #0:4 = personality; 5:7 = satisfaction
+
+#Demographic distance
+demo = pd.read_csv()
 
 
 
@@ -175,10 +185,6 @@ def implementation_person(nRef, ifRand=False, graph=False):
 
     #Parameters
     nRef_person, mode_person = (nRef, '0')
-
-    #Get user distance matrix
-    person = np.genfromtxt(r'../data/personality_satisfaction.csv', delimiter=',', skip_header=1)
-    u_dist_person = squareform(pdist(person[:, :5], 'cosine')) #0:4 = personality; 5:7 = satisfaction
 
     #Prediction
     predictions_person = recLoo(recFunc=CF, dist=u_dist_person, nRef=nRef_person, mode=mode_person, ifRand=ifRand)
