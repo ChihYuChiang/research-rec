@@ -21,7 +21,7 @@ def flattenList(l):
 def preprocessing():
 
     #Load data
-    pref_raw = np.genfromtxt(r'../data/raw_preference2.csv', delimiter=',', skip_header=1)
+    pref_raw = np.genfromtxt(r'../data/raw_preference_combined.csv', delimiter=',', skip_header=1)
     nM_raw, nN_raw = pref_raw.shape
 
 

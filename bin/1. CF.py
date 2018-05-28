@@ -25,13 +25,24 @@ nMN = len(np.where(isnan_inv)[0])
 print('Total number of ratings:\n', nMN)
 
 
-#--Survey data
-#Personality distance
+#--Personality distance
 person = np.genfromtxt(r'../data/personality_satisfaction.csv', delimiter=',', skip_header=1)
 u_dist_person = squareform(pdist(person[:, :5], 'cosine')) #0:4 = personality; 5:7 = satisfaction
 
-#Demographic distance
-demo = pd.read_csv()
+
+#--Demographic distance
+#Get survey data
+survey = pd.read_csv(r'../data/raw/survey.csv').drop_duplicates(subset='respondent')
+
+#Sort the survey data to sync preference data order
+p_order = pd.read_csv(r'../data/respondent-id.txt', names=['respondent'])
+survey = p_order.merge(survey, on='respondent')
+
+#Expand categorical data and normalize
+demo = pd.get_dummies(survey, columns=['race']).iloc[:, -9:].apply(lambda col: (col - col.mean()) / col.std())
+
+#Compute dist
+u_dist_demo = squareform(pdist(demo, 'cosine'))
 
 
 
@@ -208,6 +219,36 @@ predictions_person, _ = implementation_person(10, graph=True)
 
 #Implement with different numbers of reference
 multiImplement(np.arange(1, 81), implementation_person, nRand=30, titleLabel='Person')
+
+
+#--Demographic implementation
+def implementation_demo(nRef, ifRand=False, graph=False):
+
+    #Parameters
+    nRef_demo, mode_demo = (nRef, '0')
+
+    #Prediction
+    predictions_demo = recLoo(recFunc=CF, dist=u_dist_demo, nRef=nRef_demo, mode=mode_demo, ifRand=ifRand)
+
+    #Evaluation
+    mse_demo = np.sum(np.square(predictions_demo - prefs) / nMN)
+    cor_demo = np.corrcoef(predictions_demo, prefs)
+    print('-' * 60)
+    print('Demographic mode {} (reference = {})'.format(mode_demo, nRef_demo))
+    print('MSE =', mse_demo)
+    print('Correlation =', cor_demo[0, 1])
+
+    #Graphing
+    if graph: scatter([prefs, predictions_demo], ['prefs', 'predictions_demo'])
+
+    #Return the predicted value
+    return predictions_demo, cor_demo[0, 1]
+
+#Implement
+predictions_demo, _ = implementation_demo(10, graph=True)
+
+#Implement with different numbers of reference
+multiImplement(np.arange(1, 81), implementation_demo, nRand=30, titleLabel='demo')
 
 
 
