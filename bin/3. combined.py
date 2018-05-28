@@ -37,29 +37,39 @@ def ensemble(predictions, epoch=2000, graph=False):
     return predictions_en, cor_en[0, 1], w_formatted
 
 #Implement
-predictions_en, _, __ = ensemble([implementation_cf(45)[0], implementation_person(45)[0]], epoch=20000, graph=True)
+predictions_en, _, __ = ensemble([implementation_cf(45)[0], implementation_person(45)[0], implementation_c(1)[0]], epoch=20000, graph=True)
 
 
 #--Implement with different numbers of reference
-cors_cf, cors_person, cors_en, w_cf, w_person = [], [], [], [], []
+cors_cf, cors_person, cors_en1, cors_en2 = [], [], [], []
+w_cf, w_person, w_text = [[], []], [[], []], [[], []]
 
+predictions_text, _ = implementation_c(1) #Text
 N_REF = np.arange(1, 81)
 for i in N_REF:
-    predictions_cf, cor_cf = implementation_cf(i)
+    predictions_cf, cor_cf = implementation_cf(i) #CF
     cors_cf.append(cor_cf)
 
-    predictions_person, cor_person = implementation_person(i)
+    predictions_person, cor_person = implementation_person(i) #Personality
     cors_person.append(cor_person)
 
-    _, cor_en, w = ensemble([predictions_cf, predictions_person], epoch=int(round((i ** 0.5) * 5000)))
-    cors_en.append(cor_en)
-    w_cf.append(w[0])
-    w_person.append(w[1])
+    _, cor_en1, w1 = ensemble([predictions_cf, predictions_person], epoch=int(min(round((i ** 1.2) * 1000), 80000))) #Ensemble1
+    cors_en1.append(cor_en1)
+
+    _, cor_en2, w2 = ensemble([predictions_cf, predictions_person, predictions_text], epoch=int(min(round((i ** 1.2) * 1500), 100000))) #Ensemble2
+    cors_en2.append(cor_en2)
+
+    w_cf[0].append(w1[0])
+    w_person[0].append(w1[1])
+    w_cf[1].append(w2[0])
+    w_person[1].append(w2[1])
+    w_text[1].append(w2[2])
 
 #Graph for the correlations
 plt.plot(N_REF, cors_cf, label='CF')
 plt.plot(N_REF, cors_person, label='Personality')
-plt.plot(N_REF, cors_en, label='Combined')
+plt.plot(N_REF, cors_en1, label='CF+Personality')
+plt.plot(N_REF, cors_en2, label='CF+Personality+Text')
 plt.legend(loc=(1.03, 0.6))
 plt.title('Ensemble correlation by number of reference')
 plt.xlabel('Number of reference')
@@ -69,10 +79,11 @@ plt.close()
 
 #Graph for the ensemble weights
 fig, ax = plt.subplots()
-ax.bar(N_REF, w_cf, label='CF')
-ax.bar(N_REF, w_person, bottom=w_cf, label='Personality')
+ax.bar(N_REF, w_cf[1], label='CF')
+ax.bar(N_REF, w_person[1], bottom=w_cf[1], label='Personality')
+ax.bar(N_REF, w_text[1], bottom=w_cf[1] + w_person[1], label='Text')
 ax.legend(loc=(1.03, 0.6))
-ax.axhline(0.5, ls='--', color='r')
+# ax.axhline(0.5, ls='--', color='r')
 ax.set(xlabel='Number of reference', ylabel='Weight proportion', title='Ensemble weight proportion by number of reference')
 plt.show()
 plt.close()

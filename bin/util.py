@@ -94,7 +94,7 @@ def deMean(matrix_in):
 
 
 #--Ensemble model weighting
-def ensembleWeight(predictionStack, prefs, nEpoch=2000):
+def ensembleWeight(predictionStack, prefs, nEpoch=2000, graph=False):
 
     #Initialization
     #Minimize MSE
@@ -118,12 +118,13 @@ def ensembleWeight(predictionStack, prefs, nEpoch=2000):
             if epoch % 5 == 0:
                 costs.append(epoch_cost)
 
-        plt.plot(np.squeeze(costs))
-        plt.ylabel('cost')
-        plt.xlabel('iterations (per fives)')
-        plt.title("Learning rate =" + str(learning_rate))
-        plt.show()
-        plt.close()
+        if graph:
+            plt.plot(np.squeeze(costs))
+            plt.ylabel('cost')
+            plt.xlabel('iterations (per fives)')
+            plt.title("Learning rate = " + str(learning_rate))
+            plt.show()
+            plt.close()
 
         w_trained = sess.run(w)
 
