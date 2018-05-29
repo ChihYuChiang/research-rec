@@ -3,7 +3,7 @@ import random
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
-from util import preprocessing, scatter, recLoo, deMean, multiImplement
+from util import *
 
 
 '''
@@ -11,18 +11,8 @@ from util import preprocessing, scatter, recLoo, deMean, multiImplement
 Preference data
 ------------------------------------------------------------
 '''
-#--Data description
-pref_nan, nM, nN, isnan_inv, gameRatedByRater = preprocessing()
-
-#How many raters rate each game
-print('Number of raters per game:\n', np.sum(isnan_inv, axis=0))
-
-#How many games rated each rater
-print('Number of games rated per rater:\n', np.sum(isnan_inv, axis=1))
-
-#Total num of rating (!= nM * nN)
-nMN = len(np.where(isnan_inv)[0])
-print('Total number of ratings:\n', nMN)
+#--Preprocessing pref data
+pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
 
 
 
@@ -124,10 +114,6 @@ def cRec(pref_nan, v_dist, m, n, nRef, mode, ifRand):
 Models
 ------------------------------------------------------------
 '''
-#--Subtract column and row effects for pref matrix and makes it long-form
-prefs = deMean(pref_nan)[0][isnan_inv]
-
-
 #--Leave-one-out cRec implementation
 def implementation_c(nRef, ifRand=False, graph=False):
     
@@ -138,18 +124,10 @@ def implementation_c(nRef, ifRand=False, graph=False):
     predictions_c = recLoo(recFunc=cRec, dist=squareform(dist_review), nRef=nRef, mode=mode, ifRand=ifRand)
 
     #Evaluation
-    mse_c = np.sum(np.square(predictions_c - prefs) / nMN)
-    cor_c = np.corrcoef(predictions_c, prefs)
-    print('-' * 60)
-    print('CRec mode {} (reference = {})'.format(mode, nRef))
-    print('MSE =', mse_c)
-    print('Correlation =', cor_c[0, 1])
-
-    #Graphing
-    if graph: scatter([prefs, predictions_c], ['prefs', 'predictions_c'])
+    mse_c, cor_c = evalModel(predictions_c, prefs, nMN, title='CRec mode {} (reference = {})'.format(mode, nRef), graph=graph)
 
     #Return the predicted value
-    return predictions_c, cor_c[0, 1]
+    return predictions_c, cor_c
 
 #Implement
 predictions_c, _ = implementation_c(5, graph=True)

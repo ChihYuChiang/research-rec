@@ -6,43 +6,119 @@ from util import *
 
 '''
 ------------------------------------------------------------
-Ensemble
+Component functions
+------------------------------------------------------------
+'''
+#--Ensemble model weighting
+#Average prediction
+def ensembleWeight_ap(predictionStack, prefs, nEpoch=2000, graph=False):
+
+    #Initialization
+    #Minimize MSE
+    tf.reset_default_graph()
+    learning_rate = 0.01
+    w = tf.Variable(np.zeros((len(predictionStack), 1)), name='weight', dtype=tf.float32)
+    cost = tf.reduce_mean(tf.square(tf.reduce_sum(predictionStack * w, axis=0) - prefs))
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
+    init = tf.global_variables_initializer()
+
+    #Training
+    costs = []
+    with tf.Session() as sess:
+        sess.run(init)
+
+        for epoch in range(nEpoch):
+            _, epoch_cost = sess.run([optimizer, cost])
+
+            if epoch % 100 == 0:
+                print ('Cost after epoch %i: %f' % (epoch, epoch_cost))
+            if epoch % 5 == 0:
+                costs.append(epoch_cost)
+
+        if graph:
+            plt.plot(np.squeeze(costs))
+            plt.ylabel('cost')
+            plt.xlabel('iterations (per fives)')
+            plt.title("Learning rate = " + str(learning_rate))
+            plt.show()
+            plt.close()
+
+        w_trained = sess.run(w)
+
+    return w_trained
+
+#Average similarity
+def ensembleWeight_as(predictionStack, prefs, nEpoch=2000, graph=False):
+
+    #Initialization
+    #Minimize MSE
+    tf.reset_default_graph()
+    learning_rate = 0.01
+    w = tf.Variable(np.zeros((len(predictionStack), 1)), name='weight', dtype=tf.float32)
+    cost = tf.reduce_mean(tf.square(tf.reduce_sum(predictionStack * w, axis=0) - prefs))
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
+    init = tf.global_variables_initializer()
+
+    #Training
+    costs = []
+    with tf.Session() as sess:
+        sess.run(init)
+
+        for epoch in range(nEpoch):
+            _, epoch_cost = sess.run([optimizer, cost])
+
+            if epoch % 100 == 0:
+                print ('Cost after epoch %i: %f' % (epoch, epoch_cost))
+            if epoch % 5 == 0:
+                costs.append(epoch_cost)
+
+        if graph:
+            plt.plot(np.squeeze(costs))
+            plt.ylabel('cost')
+            plt.xlabel('iterations (per fives)')
+            plt.title("Learning rate = " + str(learning_rate))
+            plt.show()
+            plt.close()
+
+        w_trained = sess.run(w)
+
+    return w_trained
+
+
+
+
+'''
+------------------------------------------------------------
+Ensemble model
 
 - Read in the data and functions in 1. and 2. by hand.
 ------------------------------------------------------------
 '''
-#--CF and personality (and content based) ensemble
-def ensemble(predictions, epoch=2000, graph=False):
+"Average prediction"
+#CF, personality, and content based ensemble
+def ensemble_ap(predictions, epoch=2000, graph=False):
 
     #Training
     predictionStack = np.stack(predictions)
-    w_trained = ensembleWeight(predictionStack, prefs, nEpoch=epoch)
+    w_trained = ensembleWeight_ap(predictionStack, prefs, nEpoch=epoch)
     w_formatted = [w for w in flattenList(w_trained.tolist())]
 
     #Prediction
     predictions_en = np.sum(w_trained * predictionStack, axis=0)
 
     #Evaluation
-    mse_en = np.sum(np.square(predictions_en - prefs) / nMN)
-    cor_en = np.corrcoef(predictions_en, prefs)
-    print('-' * 60)
-    print('Ensemble\nweight = {}'.format(w_formatted))
-    print('MSE =', mse_en)
-    print('Correlation =', cor_en[0, 1])
-
-    #Graphing
-    if graph: scatter([prefs, predictions_en], ['prefs', 'predictions_en'])
+    mse_en, cor_en = evalModel(predictions_en, prefs, nMN, text_title='Ensemble (average prediction)\nweight = {}'.format(w_formatted), graph=graph)
 
     #Return the predicted value
-    return predictions_en, cor_en[0, 1], w_formatted
+    return predictions_en, cor_en, w_formatted
 
 #Implement
-predictions_en, _, __ = ensemble([implementation_cf(45)[0], implementation_person(45)[0], implementation_c(1)[0]], epoch=20000, graph=True)
+predictions_en, _, __ = ensemble_ap([implementation_cf(45)[0], implementation_person(45)[0], implementation_c(1)[0]], epoch=20000, graph=True)
 
 
 #--Implement with different numbers of reference
-cors_cf, cors_person, cors_en1, cors_en2 = [], [], [], []
-w_cf, w_person, w_text = [[], []], [[], []], [[], []]
+cors_cf, cors_person, cors_en1, cors_en2 = ([] for i in range(4))
+w_cf, w_person, w_text = ([[], []] for i in range(3))
 
 predictions_text, _ = implementation_c(1) #Text
 N_REF = np.arange(1, 81)
@@ -53,10 +129,10 @@ for i in N_REF:
     predictions_person, cor_person = implementation_person(i) #Personality
     cors_person.append(cor_person)
 
-    _, cor_en1, w1 = ensemble([predictions_cf, predictions_person], epoch=int(min(round((i ** 1.2) * 1000), 80000))) #Ensemble1
+    _, cor_en1, w1 = ensemble_ap([predictions_cf, predictions_person], epoch=int(min(round((i ** 1.2) * 1000), 80000))) #Ensemble1
     cors_en1.append(cor_en1)
 
-    _, cor_en2, w2 = ensemble([predictions_cf, predictions_person, predictions_text], epoch=int(min(round((i ** 1.2) * 1500), 100000))) #Ensemble2
+    _, cor_en2, w2 = ensemble_ap([predictions_cf, predictions_person, predictions_text], epoch=int(min(round((i ** 1.2) * 1500), 100000))) #Ensemble2
     cors_en2.append(cor_en2)
 
     w_cf[0].append(w1[0])
@@ -78,15 +154,48 @@ plt.show()
 plt.close()
 
 #Graph for the ensemble weights
+#ax.axhline(0.5, ls='--', color='r')
 fig, ax = plt.subplots()
-ax.bar(N_REF, w_cf[1], label='CF')
-ax.bar(N_REF, w_person[1], bottom=w_cf[1], label='Personality')
-ax.bar(N_REF, w_text[1], bottom=w_cf[1] + w_person[1], label='Text')
+ax.bar(N_REF, listEWiseOp(abs, w_cf[1]), label='CF')
+ax.bar(N_REF, listEWiseOp(abs, w_person[1]), bottom=listEWiseOp(abs, w_cf[1]), label='Personality')
+ax.bar(N_REF, listEWiseOp(abs, w_text[1]), bottom=[sum(x) for x in zip(listEWiseOp(abs, w_cf[1]), listEWiseOp(abs, w_person[1]))], label='Text')
 ax.legend(loc=(1.03, 0.6))
-# ax.axhline(0.5, ls='--', color='r')
 ax.set(xlabel='Number of reference', ylabel='Weight proportion', title='Ensemble weight proportion by number of reference')
 plt.show()
 plt.close()
+
+
+
+
+"Average similarity"
+#CF and personality ensemble
+def ensemble_as(nRef, epoch=2000, graph=False):
+
+    #Personality similarity (from CF.py)
+    u_dist_person
+
+    #CF similarity (from CF.py)
+    #Mask the pref_nan to acquire the training data
+    pref_train = pref_nan.copy()
+    pref_train[m, n] = np.nan
+
+    #Impute nan with total mean and adjust by column and row effects
+    pref_train = imputation(pref_train)
+    SVD(pref_train, nf=20)
+
+    #Training
+    distStack = np.stack([u_dist_person])
+    w_trained = ensembleWeight_as(distStack, prefs, nEpoch=epoch)
+    w_formatted = [w for w in flattenList(w_trained.tolist())]
+
+    #Prediction
+    predictions_en = np.sum(w_trained * predictionStack, axis=0)
+
+    #Evaluation
+    mse_en, cor_en = evalModel(predictions_en, prefs, nMN, title='Ensemble (average similarity)\nweight = {}'.format(w_formatted), graph=graph)
+
+    #Return the predicted value
+    return predictions_en, cor_en, w_formatted
 
 
 

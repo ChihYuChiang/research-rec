@@ -4,6 +4,12 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
+
+'''
+------------------------------------------------------------
+Generic functions
+------------------------------------------------------------
+'''
 #--Flatten list (recursive)
 #Parameter: l, a list
 #Return: a flattened list as a generator
@@ -16,30 +22,10 @@ def flattenList(l):
             yield el
 
 
-#--Preprocess data
-#Return processed matrix, matrix shape, reversed nan index
-def preprocessing():
-
-    #Load data
-    pref_raw = np.genfromtxt(r'../data/raw_preference_combined.csv', delimiter=',', skip_header=1)
-    nM_raw, nN_raw = pref_raw.shape
-
-
-    #Combine sub-measurements to acquire final matrix
-    #Get specific rating: pref_nan[rater, game]
-    pref_nan = (pref_raw[:, np.arange(0, nN_raw, 3)] + pref_raw[:, np.arange(1, nN_raw, 3)] + pref_raw[:, np.arange(2, nN_raw, 3)]) / 3
-
-    #Get final data shape
-    nM, nN = pref_nan.shape
-
-    #Reversed nan index
-    isnan_inv = np.logical_not(np.isnan(pref_nan))
-    naniloc_inv = np.where(isnan_inv)
-
-    #Find game ids of the games rated for each rater
-    gameRatedByRater = [np.take(naniloc_inv[1], np.where(naniloc_inv[0] == i)).flatten() for i in np.arange(nM)]
-
-    return pref_nan, nM, nN, isnan_inv, gameRatedByRater
+#--Element-wise list operation
+#Return: operated list
+def listEWiseOp(op, l):
+    return list(map(op, l))
 
 
 #--Graphing 2-D scatter plot
@@ -55,25 +41,6 @@ def scatter(vectors, names):
 
     g = sns.jointplot(x=names[0], y=names[1], data=df, color="m", kind="reg", scatter_kws={"s": 10})
     plt.show()
-
-
-#--Leave-one-out implementation
-#Return predicted score in long-form
-def recLoo(recFunc, dist, nRef, mode, **kwargs):
-
-    #Data
-    pref_nan, nM, nN, isnan_inv, gameRatedByRater = preprocessing()
-
-    #Operation
-    predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
-    for m in np.arange(nM):
-        for n in gameRatedByRater[m]:
-            predictions_nan[m, n] = recFunc(pref_nan, dist, m, n, nRef=nRef, mode=mode, **kwargs)
-
-    #Take non-nan entries and makes into long-form by [isnan_inv] slicing
-    predictions = predictions_nan[isnan_inv]
-    
-    return predictions
 
 
 #--Remove row and column effect
@@ -93,42 +60,84 @@ def deMean(matrix_in):
     return matrix_out, nMean, mMean
 
 
-#--Ensemble model weighting
-def ensembleWeight(predictionStack, prefs, nEpoch=2000, graph=False):
+#--Evaluate model with mse, cor, and graphing
+def evalModel(predictions, truth, nMN, title, graph):
 
-    #Initialization
-    #Minimize MSE
-    tf.reset_default_graph()
-    learning_rate = 0.01
-    w = tf.Variable(np.zeros((len(predictionStack), 1)), name='weight', dtype=tf.float32)
-    cost = tf.reduce_mean(tf.square(tf.reduce_sum(predictionStack * w, axis=0) - prefs))
-    optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
-    init = tf.global_variables_initializer()
+    #Description
+    mse = np.sum(np.square(predictions - truth) / nMN)
+    cor = np.corrcoef(predictions, truth)
+    print('-' * 60)
+    print(title)
+    print('MSE =', mse)
+    print('Correlation =', cor[0, 1])
 
-    #Training
-    costs = []
-    with tf.Session() as sess:
-        sess.run(init)
+    #Graphing
+    if graph: scatter([truth, predictions], ['truth', 'predictions'])
 
-        for epoch in range(nEpoch):
-            _, epoch_cost = sess.run([optimizer, cost])
+    return mse, cor[0, 1]
 
-            if epoch % 100 == 0:
-                print ('Cost after epoch %i: %f' % (epoch, epoch_cost))
-            if epoch % 5 == 0:
-                costs.append(epoch_cost)
 
-        if graph:
-            plt.plot(np.squeeze(costs))
-            plt.ylabel('cost')
-            plt.xlabel('iterations (per fives)')
-            plt.title("Learning rate = " + str(learning_rate))
-            plt.show()
-            plt.close()
 
-        w_trained = sess.run(w)
 
-    return w_trained
+'''
+------------------------------------------------------------
+Common functions
+------------------------------------------------------------
+'''
+#--Preprocess data
+#Return processed matrix, matrix shape, reversed nan index
+def preprocessing(description):
+
+    #Load data
+    pref_raw = np.genfromtxt(r'../data/raw_preference_combined.csv', delimiter=',', skip_header=1)
+    nM_raw, nN_raw = pref_raw.shape
+
+    #Combine sub-measurements to acquire final matrix
+    #Get specific rating: pref_nan[rater, game]
+    pref_nan = (pref_raw[:, np.arange(0, nN_raw, 3)] + pref_raw[:, np.arange(1, nN_raw, 3)] + pref_raw[:, np.arange(2, nN_raw, 3)]) / 3
+
+    #Get final data shape
+    nM, nN = pref_nan.shape
+
+    #Reversed nan index
+    isnan_inv = np.logical_not(np.isnan(pref_nan))
+    naniloc_inv = np.where(isnan_inv)
+
+    #Find game ids of the games rated for each rater
+    gameRatedByRater = [np.take(naniloc_inv[1], np.where(naniloc_inv[0] == i)).flatten() for i in np.arange(nM)]
+
+    #Total num of rating (!= nM * nN)
+    nMN = len(np.where(isnan_inv)[0])
+
+    #Subtract column and row effects for pref matrix and makes it long-form
+    prefs = deMean(pref_nan)[0][isnan_inv]
+
+    #Data description
+    if description:
+        print('Number of raters per game:\n', np.sum(isnan_inv, axis=0))
+        print('Number of games rated per rater:\n', np.sum(isnan_inv, axis=1))
+        print('Total number of ratings:\n', nMN)
+
+    return pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
+
+
+#--Leave-one-out implementation
+#Return predicted score in long-form
+def recLoo(recFunc, dist, nRef, mode, **kwargs):
+
+    #Data
+    pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
+
+    #Operation
+    predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
+    for m in np.arange(nM):
+        for n in gameRatedByRater[m]:
+            predictions_nan[m, n] = recFunc(pref_nan, dist, m, n, nRef=nRef, mode=mode, **kwargs)
+
+    #Take non-nan entries and makes into long-form by [isnan_inv] slicing
+    predictions = predictions_nan[isnan_inv]
+    
+    return predictions
 
 
 #--Implement with different numbers of reference

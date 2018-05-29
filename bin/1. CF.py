@@ -1,30 +1,28 @@
 import numpy as np
-import pandas as pd
 import random
+import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
+from functools import partial
 from util import *
 
 
 '''
 ------------------------------------------------------------
-Data
+Preference data
 ------------------------------------------------------------
 '''
-#--Data description
-pref_nan, nM, nN, isnan_inv, gameRatedByRater = preprocessing()
-
-#How many raters rate each game
-print('Number of raters per game:\n', np.sum(isnan_inv, axis=0))
-
-#How many games rated each rater
-print('Number of games rated per rater:\n', np.sum(isnan_inv, axis=1))
-
-#Total num of rating (!= nM * nN)
-nMN = len(np.where(isnan_inv)[0])
-print('Total number of ratings:\n', nMN)
+#--Preprocessing pref data
+pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
 
 
+
+
+'''
+------------------------------------------------------------
+People similarity
+------------------------------------------------------------
+'''
 #--Personality distance
 person = np.genfromtxt(r'../data/personality_satisfaction.csv', delimiter=',', skip_header=1)
 u_dist_person = squareform(pdist(person[:, :5], 'cosine')) #0:4 = personality; 5:7 = satisfaction
@@ -52,8 +50,8 @@ u_dist_demo = squareform(pdist(demo, 'cosine'))
 Component functions
 ------------------------------------------------------------
 '''
-#--nan imputation by column mean
-#Return imputed matrix, column mean
+#--nan imputation by total mean and adjust by column and row effects
+#Return imputed matrix
 def imputation(matrix):
     
     #Compute column and row effect
@@ -157,34 +155,26 @@ def CF(pref_nan, u_dist, m, n, nRef, mode, ifRand):
 Models
 ------------------------------------------------------------
 '''
-#--Subtract column and row effects for pref matrix and makes it long-form
-prefs = deMean(pref_nan)[0][isnan_inv]
-
-
-#--Leave-one-out CF implementation
-def implementation_cf(nRef, ifRand=False, graph=False):
-
-    #Parameters
-    nRef, mode = (nRef, '0')
-
+#--Implementation wrapper
+def implementation(nRef, recFunc, dist, mode, title, ifRand=False, graph=False):
+    
     #Prediction
-    predictions = recLoo(recFunc=CF, dist=None, nRef=nRef, mode=mode, ifRand=ifRand)
+    predictions = recLoo(recFunc=recFunc, dist=dist, nRef=nRef, mode=mode, ifRand=ifRand)
+
+    #Create proper title for presenting result
+    title = title.format(mode, nRef)
 
     #Evaluation
-    mse = np.sum(np.square(predictions - prefs) / nMN)
-    cor = np.corrcoef(predictions, prefs)
-    print('-' * 60)
-    print('CF mode {} (reference = {})'.format(mode, nRef))
-    print('MSE =', mse)
-    print('Correlation =', cor[0, 1])
-
-    #Graphing
-    if graph: scatter([prefs, predictions], ['prefs', 'predictions'])
+    mse, cor = evalModel(predictions, prefs, nMN, title, graph=graph)
 
     #Return the predicted value
-    return predictions, cor[0, 1]
+    return predictions, cor
 
-#Implement
+
+#--CF implementation
+implementation_cf = partial(implementation, recFunc=CF, dist=None, mode='0', title='CF mode {} (reference = {})')
+
+#Single implement
 predictions, _ = implementation_cf(10, graph=True)
 
 #Implement with different numbers of reference
@@ -192,29 +182,9 @@ multiImplement(np.arange(1, 81), implementation_cf, nRand=30, titleLabel='Cf')
 
 
 #--Personality implementation
-def implementation_person(nRef, ifRand=False, graph=False):
+implementation_person = partial(implementation, recFunc=CF, dist=u_dist_person, mode='0', title='Personality mode {} (reference = {})')
 
-    #Parameters
-    nRef_person, mode_person = (nRef, '0')
-
-    #Prediction
-    predictions_person = recLoo(recFunc=CF, dist=u_dist_person, nRef=nRef_person, mode=mode_person, ifRand=ifRand)
-
-    #Evaluation
-    mse_person = np.sum(np.square(predictions_person - prefs) / nMN)
-    cor_person = np.corrcoef(predictions_person, prefs)
-    print('-' * 60)
-    print('Personality mode {} (reference = {})'.format(mode_person, nRef_person))
-    print('MSE =', mse_person)
-    print('Correlation =', cor_person[0, 1])
-
-    #Graphing
-    if graph: scatter([prefs, predictions_person], ['prefs', 'predictions_person'])
-
-    #Return the predicted value
-    return predictions_person, cor_person[0, 1]
-
-#Implement
+#Single implement
 predictions_person, _ = implementation_person(10, graph=True)
 
 #Implement with different numbers of reference
@@ -222,29 +192,9 @@ multiImplement(np.arange(1, 81), implementation_person, nRand=30, titleLabel='Pe
 
 
 #--Demographic implementation
-def implementation_demo(nRef, ifRand=False, graph=False):
+implementation_demo = partial(implementation, recFunc=CF, dist=u_dist_demo, mode='0', title='Demographic mode {} (reference = {})')
 
-    #Parameters
-    nRef_demo, mode_demo = (nRef, '0')
-
-    #Prediction
-    predictions_demo = recLoo(recFunc=CF, dist=u_dist_demo, nRef=nRef_demo, mode=mode_demo, ifRand=ifRand)
-
-    #Evaluation
-    mse_demo = np.sum(np.square(predictions_demo - prefs) / nMN)
-    cor_demo = np.corrcoef(predictions_demo, prefs)
-    print('-' * 60)
-    print('Demographic mode {} (reference = {})'.format(mode_demo, nRef_demo))
-    print('MSE =', mse_demo)
-    print('Correlation =', cor_demo[0, 1])
-
-    #Graphing
-    if graph: scatter([prefs, predictions_demo], ['prefs', 'predictions_demo'])
-
-    #Return the predicted value
-    return predictions_demo, cor_demo[0, 1]
-
-#Implement
+#Single implement
 predictions_demo, _ = implementation_demo(10, graph=True)
 
 #Implement with different numbers of reference
