@@ -47,45 +47,45 @@ def ensembleWeight_ap(predictionStack, prefs, nEpoch=2000, graph=False):
 
     return w_trained
 
+
+
+
 #Average similarity
-def ensembleWeight_as(predictionStack, prefs, nEpoch=2000, graph=False):
+def ensembleWeight_as(distStack, prefs, nRef, nEpoch=2000, graph=False):
 
     #Initialization
     #Minimize MSE
-    tf.reset_default_graph()
+    tf.reset_default_graph()1
     learning_rate = 0.01
-    w = tf.Variable(np.zeros((len(predictionStack), 1)), name='weight', dtype=tf.float32)
-    cost = tf.reduce_mean(tf.square(tf.reduce_sum(predictionStack * w, axis=0) - prefs))
-    optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
+    distStack = tf.Variable(np.stack([tt1, tt2]), name='test', dtype=tf.float32)
+    w = tf.Variable(np.ones((2, 1, 1)), name='weight', dtype=tf.float32)
+    dist = tf.reduce_sum(distStack * w, axis=0)
+
+    s, i = tf.nn.top_k(dist, k=nRef, sorted=True)
+    cat_i = tf.reshape(tf.transpose(tf.range(0, 2.0) * tf.ones((2, 2))), [2, 2, 1])
+    cat_i = tf.cast(cat_i, tf.int32)
+    i = tf.reshape(i, [2, 2, 1])
+    ee = tf.concat([i, cat_i], axis=-1)
+    result = tf.gather_nd(prefs, ee)
+
+    prediction = tf.reduce_mean(result, axis=-1)
+
+    # cost = tf.reduce_mean(tf.square(prediction - prefs))
+    # optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
     init = tf.global_variables_initializer()
 
     #Training
     costs = []
     with tf.Session() as sess:
         sess.run(init)
+        test = sess.run(result)
+        print(test)
 
-        for epoch in range(nEpoch):
-            _, epoch_cost = sess.run([optimizer, cost])
-
-            if epoch % 100 == 0:
-                print ('Cost after epoch %i: %f' % (epoch, epoch_cost))
-            if epoch % 5 == 0:
-                costs.append(epoch_cost)
-
-        if graph:
-            plt.plot(np.squeeze(costs))
-            plt.ylabel('cost')
-            plt.xlabel('iterations (per fives)')
-            plt.title("Learning rate = " + str(learning_rate))
-            plt.show()
-            plt.close()
-
-        w_trained = sess.run(w)
-
-    return w_trained
-
-
-
+tt1 = np.array([[1, 2, 3], [4, 5, 6]], dtype='float32')
+tt2 = np.array([[10, 20, 30], [60, 50, 40]], dtype='float32')
+prefs = np.array([[15, 25, 35], [1.5, None, 3.5]], dtype='float32')
+np.sum(np.stack([tt1, tt2]) * np.array([[[0.1]], [[0.5]]]), axis=0)
+ensembleWeight_as([tt1, tt2], prefs, 2)
 
 '''
 ------------------------------------------------------------
@@ -96,11 +96,11 @@ Ensemble model
 '''
 "Average prediction"
 #CF, personality, and content based ensemble
-def ensemble_ap(predictions, epoch=2000, graph=False):
+def ensemble_ap(predictions, nEpoch=2000, graph=False):
 
     #Training
     predictionStack = np.stack(predictions)
-    w_trained = ensembleWeight_ap(predictionStack, prefs, nEpoch=epoch)
+    w_trained = ensembleWeight_ap(predictionStack, prefs, nEpoch=nEpoch)
     w_formatted = [w for w in flattenList(w_trained.tolist())]
 
     #Prediction
@@ -113,7 +113,7 @@ def ensemble_ap(predictions, epoch=2000, graph=False):
     return predictions_en, cor_en, w_formatted
 
 #Implement
-predictions_en, _, __ = ensemble_ap([implementation_cf(45)[0], implementation_person(45)[0], implementation_c(1)[0]], epoch=20000, graph=True)
+predictions_en, _, __ = ensemble_ap([implementation_cf(45)[0], implementation_person(45)[0], implementation_c(1)[0]], nEpoch=20000, graph=True)
 
 
 #--Implement with different numbers of reference
@@ -129,10 +129,10 @@ for i in N_REF:
     predictions_person, cor_person = implementation_person(i) #Personality
     cors_person.append(cor_person)
 
-    _, cor_en1, w1 = ensemble_ap([predictions_cf, predictions_person], epoch=int(min(round((i ** 1.2) * 1000), 80000))) #Ensemble1
+    _, cor_en1, w1 = ensemble_ap([predictions_cf, predictions_person], nEpoch=int(min(round((i ** 1.2) * 1000), 80000))) #Ensemble1
     cors_en1.append(cor_en1)
 
-    _, cor_en2, w2 = ensemble_ap([predictions_cf, predictions_person, predictions_text], epoch=int(min(round((i ** 1.2) * 1500), 100000))) #Ensemble2
+    _, cor_en2, w2 = ensemble_ap([predictions_cf, predictions_person, predictions_text], nEpoch=int(min(round((i ** 1.2) * 1500), 100000))) #Ensemble2
     cors_en2.append(cor_en2)
 
     w_cf[0].append(w1[0])
@@ -168,28 +168,46 @@ plt.close()
 
 
 "Average similarity"
-#CF and personality ensemble
-def ensemble_as(nRef, epoch=2000, graph=False):
+#Compute the cf user distance at particular m, n
+#nf = number of features used in SVD
+def m_dist_cf(m, n, nf=20):
 
-    #Personality similarity (from CF.py)
-    u_dist_person
-
-    #CF similarity (from CF.py)
     #Mask the pref_nan to acquire the training data
     pref_train = pref_nan.copy()
     pref_train[m, n] = np.nan
 
     #Impute nan with total mean and adjust by column and row effects
     pref_train = imputation(pref_train)
-    SVD(pref_train, nf=20)
+    u_dist = SVD(pref_train, nf=nf)
+
+    #Training material
+    return u_dist
+
+
+#Single prediction
+def en_as(nRef, m_sim, n_sim):
+
+    return prediction
+
+
+#Matrix prediction and evaluation
+def ensemble_as(nRef, m_dists, n_dists, _cf, m_w, n_w, nEpoch=2000, graph=False)
 
     #Training
-    distStack = np.stack([u_dist_person])
-    w_trained = ensembleWeight_as(distStack, prefs, nEpoch=epoch)
-    w_formatted = [w for w in flattenList(w_trained.tolist())]
-
+    # w_trained = ensembleWeight_as(distStack, prefs, nEpoch=nEpoch)
+    # w_formatted = [w for w in flattenList(w_trained.tolist())]
+    
     #Prediction
-    predictions_en = np.sum(w_trained * predictionStack, axis=0)
+    #Each rating uses the corresponding cf similarity
+    predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
+    for m in range(nM):
+        for n in gameRatedByRater[m]:
+            m_sim = m_w * m_dists.append(m_dist_cf(m, n))
+            n_sim = n_w * n_dists
+            predictions_nan[m, n] = en_as(nRef, m_sim, n_sim)
+
+    #Take non-nan entries and makes into long-form by [isnan_inv] slicing
+    predictions_en = predictions_nan[isnan_inv]            
 
     #Evaluation
     mse_en, cor_en = evalModel(predictions_en, prefs, nMN, title='Ensemble (average similarity)\nweight = {}'.format(w_formatted), graph=graph)
@@ -229,7 +247,7 @@ studentT_ide(*fisherTran(0.18, 2000), *fisherTran(0.178, 2000), 2000)
 #http://www.psychmike.com/Steiger.pdf
 def cors(nRef):
     predictions_cf, cor_cf = implementation_cf(nRef)
-    predictions_en, cor_en, _ = ensemble([implementation_cf(nRef)[0], implementation_person(nRef)[0]], epoch=40000)
+    predictions_en, cor_en, _ = ensemble([implementation_cf(nRef)[0], implementation_person(nRef)[0]], nEpoch=40000)
     cor_cfEn = np.corrcoef(predictions_en, predictions_cf)[0, 1]
 
     #Then use online calculator..

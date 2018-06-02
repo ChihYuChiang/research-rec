@@ -170,10 +170,13 @@ def implementation(nRef, recFunc, dist, mode, title, ifRand=False, graph=False):
     #Return the predicted value
     return predictions, cor
 
+implementation_cf = partial(implementation, recFunc=CF, dist=None, mode='0', title='CF mode {} (reference = {})')
+implementation_person = partial(implementation, recFunc=CF, dist=u_dist_person, mode='0', title='Personality mode {} (reference = {})')
+implementation_demo = partial(implementation, recFunc=CF, dist=u_dist_demo, mode='0', title='Demographic mode {} (reference = {})')
+
+#------------------------------------------------------------
 
 #--CF implementation
-implementation_cf = partial(implementation, recFunc=CF, dist=None, mode='0', title='CF mode {} (reference = {})')
-
 #Single implement
 predictions, _ = implementation_cf(10, graph=True)
 
@@ -182,8 +185,6 @@ multiImplement(np.arange(1, 81), implementation_cf, nRand=30, titleLabel='Cf')
 
 
 #--Personality implementation
-implementation_person = partial(implementation, recFunc=CF, dist=u_dist_person, mode='0', title='Personality mode {} (reference = {})')
-
 #Single implement
 predictions_person, _ = implementation_person(10, graph=True)
 
@@ -192,8 +193,6 @@ multiImplement(np.arange(1, 81), implementation_person, nRand=30, titleLabel='Pe
 
 
 #--Demographic implementation
-implementation_demo = partial(implementation, recFunc=CF, dist=u_dist_demo, mode='0', title='Demographic mode {} (reference = {})')
-
 #Single implement
 predictions_demo, _ = implementation_demo(10, graph=True)
 
