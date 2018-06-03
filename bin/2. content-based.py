@@ -34,15 +34,18 @@ print('emb_review shape: ', emb_review.shape)
 
 
 #--Compute pairwise distance
-dist_triplet = pdist(emb_triplet, 'cosine')
-dist_review = pdist(emb_review, 'cosine')
+dist_triplet_lg = pdist(emb_triplet, 'cosine')
+dist_review_lg = pdist(emb_review, 'cosine')
+
+dist_triplet = squareform(dist_triplet_lg)
+dist_review = squareform(dist_review_lg)
 
 
 #--Triplet and review correlation
-np.corrcoef(dist_triplet, dist_review)
+np.corrcoef(dist_triplet_lg, dist_review_lg)
 
 #Graphing
-scatter([dist_triplet, dist_review], ['dist_triplet', 'dist_review'])
+scatter([dist_triplet_lg, dist_review_lg], ['dist_triplet', 'dist_review'])
 
 
 
@@ -74,7 +77,7 @@ def reference_byItem(dist_target, pref_nan, pref_train, m, n, nRef, ifRand):
     for item in reference_item:
 
         #Skip nan
-        if np.isnan(pref_nan[m, item]): continue
+        if np.isnan(pref_mask[m, item]): continue
         
         #Acquire only nRef references
         if len(reference_rating) == nRef: break
@@ -125,7 +128,7 @@ def implementation_c(nRef, ifRand=False, graph=False):
     nRef, mode = (nRef, '1')
 
     #Prediction
-    predictions_c = recLoo(recFunc=cRec, dist=squareform(dist_review), nRef=nRef, mode=mode, ifRand=ifRand)
+    predictions_c = recLoo(recFunc=cRec, dist=dist_triplet, nRef=nRef, mode=mode, ifRand=ifRand)
 
     #Evaluation
     mse_c, cor_c = evalModel(predictions_c, prefs, nMN, title='CRec mode {} (reference = {})'.format(mode, nRef), graph=graph)
@@ -134,7 +137,7 @@ def implementation_c(nRef, ifRand=False, graph=False):
     return predictions_c, cor_c
 
 #Implement
-predictions_c, _ = implementation_c(5, graph=True)
+predictions_c, _ = implementation_c(10, graph=True)
 
 #Implement with different numbers of reference
 multiImplement(np.arange(1, 13), implementation_c, nRand=0, titleLabel='Content-based')

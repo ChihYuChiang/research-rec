@@ -107,6 +107,7 @@ def reference_byRater(dist_target, pref_nan, pref_train, m, n, nRef, ifRand):
     reference_rating = []
     reference_dist = []
     for rater in reference_rater:
+        
         #Skip nan
         if np.isnan(pref_mask[rater, n]): continue
         
@@ -154,7 +155,7 @@ def CF(pref_nan, u_dist, m, n, nRef, mode, ifRand):
 
     return prediction
 
-# CF(pref_nan, u_dist_person, 121, 49, 11, '1', False)
+# CF(pref_nan, None, 2, 1, 10, '1', False)
 
 
 

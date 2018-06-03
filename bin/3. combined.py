@@ -178,12 +178,12 @@ def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, graph=False):
     if len(n_w) == 0: n_dists = [-(np.eye(nN) * 2) + 2]; n_w = [1]
 
     #Transform input into proper format
-    m_dists = np.stack(m_dists) if len(m_dists) > 0 else m_dists #Deal with CF only
+    m_dists = np.stack(m_dists) if len(m_dists) > 0 else np.empty((0, 0)) #Deal with CF only
     n_dists = np.stack(n_dists)
     m_w = np.array(m_w).reshape((len(m_w), 1, 1))
     n_w = np.array(n_w).reshape((len(n_w), 1, 1))
 
-    #Save a copy of the input dists
+    #Save a copy of the input dists for CF
     m_dists_input = m_dists.copy()
 
     #Prepare an empty prediction hull
@@ -194,7 +194,7 @@ def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, graph=False):
         for n in gameRatedByRater[m]:
             
             if DEBUG:
-                if m != 36 or n != 44: continue
+                if m != 2 or n != 1: continue
                 
             #Mask the pref_nan to acquire training (reference) data
             pref_train = pref_nan.copy()
@@ -205,17 +205,17 @@ def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, graph=False):
 
             #If we are going to include CF dist
             #Each rating uses the corresponding cf similarity
-            if len(m_dists) < len(m_w):
-                #Reset the m_dists
-                m_dists = m_dists_input.copy()
+            if len(m_dists_input) < len(m_w):
 
                 #Get CF dist and append to m_dists
                 #nf = number of features used in SVD
                 m_dist_cf = SVD(pref_train, nf=20)
                 m_dist_cf = m_dist_cf.reshape((1, ) + m_dist_cf.shape)
-                m_dists = np.concatenate((m_dists, m_dist_cf), axis=0) if len(m_dists) > 0 else np.stack(m_dist_cf)
+                m_dists = np.concatenate((m_dists_input, m_dist_cf), axis=0) if len(m_dists_input) > 0 else np.stack(m_dist_cf)
 
-            #Flip distances to similarities (0 to 1)
+                if DEBUG: print(m_dists)
+
+            #Flip distances (2 to 0) to similarities (0 to 1)
             #https://docs.scipy.org/doc/scipy-0.19.1/reference/generated/generated/scipy.spatial.distance.cosine.html
             m_sim = 1 - m_dists / 2
             n_sim = 1 - n_dists / 2
@@ -231,20 +231,26 @@ def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, graph=False):
             mn_sim = np.matmul(m_sim[m, :].reshape((nM, 1)), n_sim[n, :].reshape((1, nN)))
 
             if DEBUG: print(mn_sim)
+            
+            #Remove self in the matrix 
+            isnan_inv_mn = isnan_inv.copy()
+            isnan_inv_mn[m, n] = False
 
-            #Use negative sign to reverse sort and remove self
+            #Use negative sign to reverse sort
             #(index is in flatten and nan removed)
-            refIdx = np.delete(np.argsort(-mn_sim[isnan_inv]), 0)
+            refIdx = np.argsort(-mn_sim[isnan_inv_mn])
             
             #Acquire only nRef references
             refIdx = refIdx[:nRef]
 
             if DEBUG: print(refIdx)
-            if DEBUG: print(pref_train[isnan_inv][refIdx])
-            if DEBUG: print(mn_sim[isnan_inv][refIdx])
+            if DEBUG: print(pref_train[isnan_inv_mn][refIdx])
+            if DEBUG: print(mn_sim[isnan_inv_mn][refIdx])
 
             #Flatten, nan removed, and make prediction based on the combined similarity
-            predictions_nan[m, n] = np.nansum(pref_train[isnan_inv][refIdx] * mn_sim[isnan_inv][refIdx])
+            predictions_nan[m, n] = np.sum(pref_train[isnan_inv_mn][refIdx] * mn_sim[isnan_inv_mn][refIdx])
+
+            # if abs(predictions_nan[m, n] - 43.9774887418) <= 0.000001: print(m, n); return ["", ""]
 
             if DEBUG: print(predictions_nan[m, n])
             if DEBUG: print(m, n)
@@ -262,18 +268,18 @@ def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, graph=False):
 DEBUG = False
 #Use nRef = -1 to employ all cells other than self
 #u_dist_person  u_dist_demo
-predictions_en, cor_en = ensemble_as(nRef=10, m_dists=[], n_dists=[], m_w=[1], n_w=[])
+predictions_en, cor_en = ensemble_as(nRef=10, m_dists=[], n_dists=[dist_triplet], m_w=[], n_w=[1])
 
 len(predictions_en)
 predictions_en[10:50]
 sum(predictions_en)
 
-len(predictions_demo)
-predictions_demo[10:50]
-sum(predictions_demo)
+len(predictions_person)
+predictions_person[10:50]
+sum(predictions_person)
 
 for i in range(2010):
-    if abs(predictions_en[i] - predictions_demo[i]) >= 0.1: print(i, predictions_en[i], predictions_demo[i])
+    if abs(predictions_en[i] - predictions[i]) >= 0.1: print(i, predictions_en[i], predictions[i])
 
 
 '''
