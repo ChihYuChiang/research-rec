@@ -168,53 +168,75 @@ plt.close()
 
 
 "Average similarity"
-#Compute the cf user distance at particular m, n
-#nf = number of features used in SVD
-def m_dist_cf(m, n, nf=20):
-
-    #Mask the pref_nan to acquire the training data
-    pref_train = pref_nan.copy()
-    pref_train[m, n] = np.nan
-
-    #Impute nan with total mean and adjust by column and row effects
-    pref_train = imputation(pref_train)
-    u_dist = SVD(pref_train, nf=nf)
-
-    #Training material
-    return u_dist
-
-
-#Single prediction
-def en_as(nRef, m_sim, n_sim):
-
-    return prediction
-
-
-#Matrix prediction and evaluation
-def ensemble_as(nRef, m_dists, n_dists, _cf, m_w, n_w, nEpoch=2000, graph=False)
-
-    #Training
-    # w_trained = ensembleWeight_as(distStack, prefs, nEpoch=nEpoch)
-    # w_formatted = [w for w in flattenList(w_trained.tolist())]
+#--Matrix prediction and evaluation
+def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, graph=False):
     
-    #Prediction
-    #Each rating uses the corresponding cf similarity
+    #Deal with empty
+    if len(m_w) == 0: m_dists = [np.eye(nM)]; m_w = [1]
+    if len(n_w) == 0: n_dists = [np.eye(nN)]; n_w = [1]
+
+    #Transform input into proper format
+    m_dists = np.stack(m_dists)
+    n_dists = np.stack(n_dists)
+    m_w = np.array(m_w).reshape((len(m_w), 1, 1))
+    n_w = np.array(n_w).reshape((len(n_w), 1, 1))
+
+    #Save a copy of the input dists
+    m_dists_input = m_dists.copy()
+
+    #Prepare an empty prediction hull
     predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
+
+    #Prediction, each cell by each cell
     for m in range(nM):
         for n in gameRatedByRater[m]:
-            m_sim = m_w * m_dists.append(m_dist_cf(m, n))
-            n_sim = n_w * n_dists
-            predictions_nan[m, n] = en_as(nRef, m_sim, n_sim)
+
+            #If we are going to include CF dist
+            #Each rating uses the corresponding cf similarity
+            if len(m_dists) < len(m_w):
+                #Reset the m_dists
+                m_dists = m_dists_input.copy()
+                
+                #Mask the pref_nan to acquire CF training data
+                pref_train = pref_nan.copy()
+                pref_train[m, n] = np.nan
+
+                #Impute nan with total mean and adjust by column and row effects
+                pref_train = imputation(pref_train)
+
+                #Get CF dist and append to m_dists
+                #nf = number of features used in SVD
+                m_dist_cf = SVD(pref_train, nf=20)
+                m_dist_cf = m_dist_cf.reshape((1, ) + m_dist_cf.shape)
+                m_dists = np.concatenate((m_dists, m_dist_cf), axis=0)
+
+            #Combine weighting and distance
+            m_sim = (m_dists ** m_w).sum(axis=0)
+            n_sim = (n_dists ** n_w).sum(axis=0)
+
+            #Combine two types of distances
+            mn_sim = np.matmul(m_sim[m, :].reshape((nM, 1)), n_sim[n, :].reshape((1, nN)))
+
+            #Reference rating matrix
+            pref_ref = pref_nan.copy()
+            pref_ref[m, n] = np.nan
+
+            #Acquire only nRef references
+
+            #Make prediction based on the combined distance
+            predictions_nan[m, n] = np.nansum(pref_ref * mn_sim)
 
     #Take non-nan entries and makes into long-form by [isnan_inv] slicing
     predictions_en = predictions_nan[isnan_inv]            
 
     #Evaluation
-    mse_en, cor_en = evalModel(predictions_en, prefs, nMN, title='Ensemble (average similarity)\nweight = {}'.format(w_formatted), graph=graph)
+    mse_en, cor_en = evalModel(predictions_en, prefs, nMN, title='Ensemble (average similarity)', graph=graph)
 
     #Return the predicted value
-    return predictions_en, cor_en, w_formatted
+    return predictions_en, cor_en
 
+
+predictions_en, cor_en = ensemble_as(nRef=-1, m_dists=[u_dist_demo], n_dists=[], m_w=[0.5, 0.5], n_w=[])
 
 
 
