@@ -6,6 +6,8 @@ from scipy.spatial.distance import pdist, squareform
 from functools import partial
 from util import *
 
+DEBUG = False
+
 
 '''
 ------------------------------------------------------------
@@ -107,7 +109,7 @@ def reference_byRater(dist_target, pref_nan, pref_train, m, n, nRef, ifRand):
     reference_rating = []
     reference_dist = []
     for rater in reference_rater:
-        
+
         #Skip nan
         if np.isnan(pref_mask[rater, n]): continue
         
@@ -155,7 +157,8 @@ def CF(pref_nan, u_dist, m, n, nRef, mode, ifRand):
 
     return prediction
 
-# CF(pref_nan, None, 2, 1, 10, '1', False)
+if DEBUG: CF(pref_nan, None, 2, 1, 10, '1', False)
+
 
 
 
@@ -179,9 +182,9 @@ def implementation(nRef, recFunc, dist, mode, title, ifRand=False, graph=False):
     #Return the predicted value
     return predictions, cor
 
-implementation_cf = partial(implementation, recFunc=CF, dist=None, mode='1', title='CF mode {} (reference = {})')
-implementation_person = partial(implementation, recFunc=CF, dist=u_dist_person, mode='1', title='Personality mode {} (reference = {})')
-implementation_demo = partial(implementation, recFunc=CF, dist=u_dist_demo, mode='1', title='Demographic mode {} (reference = {})')
+implementation_cf = partial(implementation, recFunc=CF, dist=None, mode='0', title='CF mode {} (reference = {})')
+implementation_person = partial(implementation, recFunc=CF, dist=u_dist_person, mode='0', title='Personality mode {} (reference = {})')
+implementation_demo = partial(implementation, recFunc=CF, dist=u_dist_demo, mode='0', title='Demographic mode {} (reference = {})')
 
 #------------------------------------------------------------
 

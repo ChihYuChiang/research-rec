@@ -3,6 +3,8 @@ from scipy.stats import t as dis_t
 import matplotlib.pyplot as plt
 from util import *
 
+DEBUG = False
+
 
 '''
 ------------------------------------------------------------
@@ -81,11 +83,14 @@ def ensembleWeight_as(distStack, prefs, nRef, nEpoch=2000, graph=False):
         test = sess.run(result)
         print(test)
 
-tt1 = np.array([[1, 2, 3], [4, 5, 6]], dtype='float32')
-tt2 = np.array([[10, 20, 30], [60, 50, 40]], dtype='float32')
-prefs = np.array([[15, 25, 35], [1.5, None, 3.5]], dtype='float32')
-np.sum(np.stack([tt1, tt2]) * np.array([[[0.1]], [[0.5]]]), axis=0)
-ensembleWeight_as([tt1, tt2], prefs, 2)
+# tt1 = np.array([[1, 2, 3], [4, 5, 6]], dtype='float32')
+# tt2 = np.array([[10, 20, 30], [60, 50, 40]], dtype='float32')
+# prefs = np.array([[15, 25, 35], [1.5, None, 3.5]], dtype='float32')
+# np.sum(np.stack([tt1, tt2]) * np.array([[[0.1]], [[0.5]]]), axis=0)
+# ensembleWeight_as([tt1, tt2], prefs, 2)
+
+
+
 
 '''
 ------------------------------------------------------------
@@ -169,7 +174,7 @@ plt.close()
 
 "Average similarity"
 #--Matrix prediction and evaluation
-def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, graph=False):
+def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, title, graph=False):
     
     #Deal with empty
     #Create distance matrix, diagonal = 0, others = 2
@@ -213,26 +218,27 @@ def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, graph=False):
                 m_dist_cf = m_dist_cf.reshape((1, ) + m_dist_cf.shape)
                 m_dists = np.concatenate((m_dists_input, m_dist_cf), axis=0) if len(m_dists_input) > 0 else np.stack(m_dist_cf)
 
-                if DEBUG: print(m_dists)
-
             #Flip distances (2 to 0) to similarities (0 to 1)
             #https://docs.scipy.org/doc/scipy-0.19.1/reference/generated/generated/scipy.spatial.distance.cosine.html
             m_sim = 1 - m_dists / 2
             n_sim = 1 - n_dists / 2
 
-            if DEBUG: print(m_sim)
-            if DEBUG: print(n_sim)
+            if DEBUG: print('m_sim', m_sim)
+            if DEBUG: print('n_sim', n_sim)
 
-            #Combine weighting and distance
-            m_sim = (m_sim ** m_w).sum(axis=0)
-            n_sim = (n_sim ** n_w).sum(axis=0)
+            #Combine weighting and similarity
+            m_sim_w = (m_sim ** m_w).sum(axis=0)
+            n_sim_w = (n_sim ** n_w).sum(axis=0)
+
+            if DEBUG: print('m_sim_w', m_sim)
+            if DEBUG: print('n_sim_w', n_sim)
 
             #Combine two types of similarities
-            mn_sim = np.matmul(m_sim[m, :].reshape((nM, 1)), n_sim[n, :].reshape((1, nN)))
+            mn_sim = np.matmul(m_sim_w[m, :].reshape((nM, 1)), n_sim_w[n, :].reshape((1, nN)))
 
-            if DEBUG: print(mn_sim)
-            
-            #Remove self in the matrix 
+            if DEBUG: print('mn_sim', mn_sim)
+
+            #Remove self from the matrix 
             isnan_inv_mn = isnan_inv.copy()
             isnan_inv_mn[m, n] = False
 
@@ -243,16 +249,12 @@ def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, graph=False):
             #Acquire only nRef references
             refIdx = refIdx[:nRef]
 
-            if DEBUG: print(refIdx)
-            if DEBUG: print(pref_train[isnan_inv_mn][refIdx])
-            if DEBUG: print(mn_sim[isnan_inv_mn][refIdx])
-
             #Flatten, nan removed, and make prediction based on the combined similarity
-            predictions_nan[m, n] = np.sum(pref_train[isnan_inv_mn][refIdx] * mn_sim[isnan_inv_mn][refIdx])
+            predictions_nan[m, n] = np.sum(pref_train[isnan_inv_mn][refIdx] * mn_sim[isnan_inv_mn][refIdx]) / np.sum(mn_sim[isnan_inv_mn][refIdx])
 
-            # if abs(predictions_nan[m, n] - 43.9774887418) <= 0.000001: print(m, n); return ["", ""]
-
-            if DEBUG: print(predictions_nan[m, n])
+            if DEBUG: print('ref_rating', pref_train[isnan_inv_mn][refIdx])
+            if DEBUG: print('ref_sim', mn_sim[isnan_inv_mn][refIdx])
+            if DEBUG: print('prediction', predictions_nan[m, n])
             if DEBUG: print(m, n)
             if DEBUG: return ["", ""]
 
@@ -260,26 +262,17 @@ def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, graph=False):
     predictions_en = predictions_nan[isnan_inv]
 
     #Evaluation
-    mse_en, cor_en = evalModel(predictions_en, prefs, nMN, title='Ensemble - average similarity (reference = {})'.format(nRef), graph=True)
+    mse_en, cor_en = evalModel(predictions_en, prefs, nMN, title=title + ' (reference = {})'.format(nRef), graph=graph)
 
     #Return the predicted value
     return predictions_en, cor_en
 
 DEBUG = False
 #Use nRef = -1 to employ all cells other than self
-#u_dist_person  u_dist_demo
-predictions_en, cor_en = ensemble_as(nRef=10, m_dists=[], n_dists=[dist_triplet], m_w=[], n_w=[1])
+#u_dist_person  u_dist_demo  dist_triplet  dist_review
+predictions_en, cor_en = ensemble_as(nRef=10, m_dists=[], n_dists=[dist_triplet], m_w=[1], n_w=[1], title='General model (test)', graph=False)
 
-len(predictions_en)
-predictions_en[10:50]
-sum(predictions_en)
 
-len(predictions_person)
-predictions_person[10:50]
-sum(predictions_person)
-
-for i in range(2010):
-    if abs(predictions_en[i] - predictions[i]) >= 0.1: print(i, predictions_en[i], predictions[i])
 
 
 '''

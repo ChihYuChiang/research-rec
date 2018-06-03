@@ -125,7 +125,7 @@ Models
 def implementation_c(nRef, ifRand=False, graph=False):
     
     #Parameters
-    nRef, mode = (nRef, '1')
+    nRef, mode = (nRef, '0')
 
     #Prediction
     predictions_c = recLoo(recFunc=cRec, dist=dist_triplet, nRef=nRef, mode=mode, ifRand=ifRand)
