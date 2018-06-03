@@ -89,10 +89,14 @@ def SVD(matrix, nf=10):
 
 #--Find the best matched raters and make reference
 #Return reference rating vec and corresponding distance vec
-def reference_byRater(dist_target, pref_nan, pref_train, n, nRef, ifRand):
+def reference_byRater(dist_target, pref_nan, pref_train, m, n, nRef, ifRand):
 
-    #Sort the rater by distance and remove self
-    reference_rater = np.delete(np.argsort(dist_target), 0)
+    #Remove self in the array
+    pref_mask = pref_nan.copy()
+    pref_mask[m, n] = np.nan
+
+    #Sort the rater by distance
+    reference_rater = np.argsort(dist_target)
 
     #If in random experiment, randomize order
     if ifRand == True:
@@ -103,9 +107,8 @@ def reference_byRater(dist_target, pref_nan, pref_train, n, nRef, ifRand):
     reference_rating = []
     reference_dist = []
     for rater in reference_rater:
-
         #Skip nan
-        if np.isnan(pref_nan[rater, n]): continue
+        if np.isnan(pref_mask[rater, n]): continue
         
         #Acquire only nRef references
         if len(reference_rating) == nRef: break
@@ -134,19 +137,24 @@ def CF(pref_nan, u_dist, m, n, nRef, mode, ifRand):
     if u_dist is None: u_dist = SVD(pref_train, nf=20)
 
     #Sort, remove self, and find the best matched raters and their ratings
-    reference_rating, reference_dist = reference_byRater(u_dist[m, :], pref_nan, pref_train, n, nRef, ifRand)
+    reference_rating, reference_dist = reference_byRater(u_dist[m, :], pref_nan, pref_train, m, n, nRef, ifRand)
+
+    # print(reference_rating)
+    # print(reference_dist)
+    # print( 1 - np.array(reference_dist) / 2)
 
     #Prediction
     #Remove column and row effects
     #Dist as weight -> transform back to -1 to 1
     computation = {
         '0': np.mean(reference_rating),
-        '1': np.dot(np.array(reference_rating), -(np.array(reference_dist) - 1))
+        '1': np.dot(np.array(reference_rating), 1 - np.array(reference_dist) / 2)
     }
     prediction = computation[mode]
 
     return prediction
 
+# CF(pref_nan, u_dist_person, 121, 49, 11, '1', False)
 
 
 
@@ -170,9 +178,9 @@ def implementation(nRef, recFunc, dist, mode, title, ifRand=False, graph=False):
     #Return the predicted value
     return predictions, cor
 
-implementation_cf = partial(implementation, recFunc=CF, dist=None, mode='0', title='CF mode {} (reference = {})')
-implementation_person = partial(implementation, recFunc=CF, dist=u_dist_person, mode='0', title='Personality mode {} (reference = {})')
-implementation_demo = partial(implementation, recFunc=CF, dist=u_dist_demo, mode='0', title='Demographic mode {} (reference = {})')
+implementation_cf = partial(implementation, recFunc=CF, dist=None, mode='1', title='CF mode {} (reference = {})')
+implementation_person = partial(implementation, recFunc=CF, dist=u_dist_person, mode='1', title='Personality mode {} (reference = {})')
+implementation_demo = partial(implementation, recFunc=CF, dist=u_dist_demo, mode='1', title='Demographic mode {} (reference = {})')
 
 #------------------------------------------------------------
 
@@ -198,7 +206,6 @@ predictions_demo, _ = implementation_demo(10, graph=True)
 
 #Implement with different numbers of reference
 multiImplement(np.arange(1, 81), implementation_demo, nRand=30, titleLabel='demo')
-
 
 
 

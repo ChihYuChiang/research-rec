@@ -54,10 +54,14 @@ Component functions
 '''
 #--Find the best matched items and make reference
 #Return reference rating vec and corresponding distance vec
-def reference_byItem(dist_target, pref_nan, pref_train, m, nRef, ifRand):
+def reference_byItem(dist_target, pref_nan, pref_train, m, n, nRef, ifRand):
+
+    #Remove self in the array
+    pref_mask = pref_nan.copy()
+    pref_mask[m, n] = np.nan
 
     #Sort the item by distance and remove self
-    reference_item = np.delete(np.argsort(dist_target), 0)
+    reference_item = np.argsort(dist_target)
 
     #If in random experiment, randomize order
     if ifRand == True:
@@ -94,13 +98,13 @@ def cRec(pref_nan, v_dist, m, n, nRef, mode, ifRand):
     pref_train = deMean(pref_train)[0]
 
     #Sort, remove self, and find the best matched raters and their ratings
-    reference_rating, reference_dist = reference_byItem(v_dist[n, :], pref_nan, pref_train, m, nRef, ifRand)
+    reference_rating, reference_dist = reference_byItem(v_dist[n, :], pref_nan, pref_train, m, n, nRef, ifRand)
 
     #Prediction
     #Dist as weight -> transform back to -1 to 1
     computation = {
         '0': np.mean(reference_rating),
-        '1': np.dot(np.array(reference_rating), -(np.array(reference_dist) - 1))
+        '1': np.dot(np.array(reference_rating), 1 - np.array(reference_dist) / 2)
     }
     prediction = computation[mode]
 
