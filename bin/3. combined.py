@@ -172,11 +172,13 @@ plt.close()
 def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, graph=False):
     
     #Deal with empty
-    if len(m_w) == 0: m_dists = [np.eye(nM)]; m_w = [1]
-    if len(n_w) == 0: n_dists = [np.eye(nN)]; n_w = [1]
+    #Create distance matrix, diagonal = 0, others = 2
+    #(distance range from 0 to 2)
+    if len(m_w) == 0: m_dists = [-(np.eye(nM) * 2) + 2]; m_w = [1]
+    if len(n_w) == 0: n_dists = [-(np.eye(nN) * 2) + 2]; n_w = [1]
 
     #Transform input into proper format
-    m_dists = np.stack(m_dists)
+    m_dists = np.stack(m_dists) if len(m_dists) > 0 else m_dists #Deal with CF only
     n_dists = np.stack(n_dists)
     m_w = np.array(m_w).reshape((len(m_w), 1, 1))
     n_w = np.array(n_w).reshape((len(n_w), 1, 1))
@@ -190,54 +192,88 @@ def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, graph=False):
     #Prediction, each cell by each cell
     for m in range(nM):
         for n in gameRatedByRater[m]:
+            
+            if DEBUG:
+                if m != 36 or n != 44: continue
+                
+            #Mask the pref_nan to acquire training (reference) data
+            pref_train = pref_nan.copy()
+            pref_train[m, n] = np.nan
+
+            #Impute nan with total mean and adjust by column and row effects
+            pref_train = imputation(pref_train)
 
             #If we are going to include CF dist
             #Each rating uses the corresponding cf similarity
             if len(m_dists) < len(m_w):
                 #Reset the m_dists
                 m_dists = m_dists_input.copy()
-                
-                #Mask the pref_nan to acquire CF training data
-                pref_train = pref_nan.copy()
-                pref_train[m, n] = np.nan
-
-                #Impute nan with total mean and adjust by column and row effects
-                pref_train = imputation(pref_train)
 
                 #Get CF dist and append to m_dists
                 #nf = number of features used in SVD
                 m_dist_cf = SVD(pref_train, nf=20)
                 m_dist_cf = m_dist_cf.reshape((1, ) + m_dist_cf.shape)
-                m_dists = np.concatenate((m_dists, m_dist_cf), axis=0)
+                m_dists = np.concatenate((m_dists, m_dist_cf), axis=0) if len(m_dists) > 0 else np.stack(m_dist_cf)
+
+            #Flip distances to similarities (0 to 1)
+            #https://docs.scipy.org/doc/scipy-0.19.1/reference/generated/generated/scipy.spatial.distance.cosine.html
+            m_sim = 1 - m_dists / 2
+            n_sim = 1 - n_dists / 2
+
+            if DEBUG: print(m_sim)
+            if DEBUG: print(n_sim)
 
             #Combine weighting and distance
-            m_sim = (m_dists ** m_w).sum(axis=0)
-            n_sim = (n_dists ** n_w).sum(axis=0)
+            m_sim = (m_sim ** m_w).sum(axis=0)
+            n_sim = (n_sim ** n_w).sum(axis=0)
 
-            #Combine two types of distances
+            #Combine two types of similarities
             mn_sim = np.matmul(m_sim[m, :].reshape((nM, 1)), n_sim[n, :].reshape((1, nN)))
 
-            #Reference rating matrix
-            pref_ref = pref_nan.copy()
-            pref_ref[m, n] = np.nan
+            if DEBUG: print(mn_sim)
 
+            #Use negative sign to reverse sort and remove self
+            #(index is in flatten and nan removed)
+            refIdx = np.delete(np.argsort(-mn_sim[isnan_inv]), 0)
+            
             #Acquire only nRef references
+            refIdx = refIdx[:nRef]
 
-            #Make prediction based on the combined distance
-            predictions_nan[m, n] = np.nansum(pref_ref * mn_sim)
+            if DEBUG: print(refIdx)
+            if DEBUG: print(pref_train[isnan_inv][refIdx])
+            if DEBUG: print(mn_sim[isnan_inv][refIdx])
+
+            #Flatten, nan removed, and make prediction based on the combined similarity
+            predictions_nan[m, n] = np.nansum(pref_train[isnan_inv][refIdx] * mn_sim[isnan_inv][refIdx])
+
+            if DEBUG: print(predictions_nan[m, n])
+            if DEBUG: print(m, n)
+            if DEBUG: return ["", ""]
 
     #Take non-nan entries and makes into long-form by [isnan_inv] slicing
-    predictions_en = predictions_nan[isnan_inv]            
+    predictions_en = predictions_nan[isnan_inv]
 
     #Evaluation
-    mse_en, cor_en = evalModel(predictions_en, prefs, nMN, title='Ensemble (average similarity)', graph=graph)
+    mse_en, cor_en = evalModel(predictions_en, prefs, nMN, title='Ensemble - average similarity (reference = {})'.format(nRef), graph=True)
 
     #Return the predicted value
     return predictions_en, cor_en
 
+DEBUG = False
+#Use nRef = -1 to employ all cells other than self
+#u_dist_person  u_dist_demo
+predictions_en, cor_en = ensemble_as(nRef=10, m_dists=[], n_dists=[], m_w=[1], n_w=[])
 
-predictions_en, cor_en = ensemble_as(nRef=-1, m_dists=[u_dist_demo], n_dists=[], m_w=[0.5, 0.5], n_w=[])
+len(predictions_en)
+predictions_en[10:50]
+sum(predictions_en)
 
+len(predictions_demo)
+predictions_demo[10:50]
+sum(predictions_demo)
+
+for i in range(2010):
+    if abs(predictions_en[i] - predictions_demo[i]) >= 0.1: print(i, predictions_en[i], predictions_demo[i])
 
 
 '''
