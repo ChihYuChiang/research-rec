@@ -137,7 +137,7 @@ def implementation_c(nRef, ifRand=False, graph=False):
     return predictions_c, cor_c
 
 #Implement
-predictions_c, _ = implementation_c(10, graph=True)
+predictions_c, _ = implementation_c(5, graph=False)
 
 #Implement with different numbers of reference
 multiImplement(np.arange(1, 13), implementation_c, nRand=0, titleLabel='Content-based')

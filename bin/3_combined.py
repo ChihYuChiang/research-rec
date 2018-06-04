@@ -3,7 +3,7 @@ from scipy.stats import t as dis_t
 import matplotlib.pyplot as plt
 from util import *
 
-DEBUG = False
+
 
 
 '''
@@ -52,46 +52,6 @@ def ensembleWeight_ap(predictionStack, prefs, nEpoch=2000, graph=False):
 
 
 
-#Average similarity
-def ensembleWeight_as(distStack, prefs, nRef, nEpoch=2000, graph=False):
-
-    #Initialization
-    #Minimize MSE
-    tf.reset_default_graph()1
-    learning_rate = 0.01
-    distStack = tf.Variable(np.stack([tt1, tt2]), name='test', dtype=tf.float32)
-    w = tf.Variable(np.ones((2, 1, 1)), name='weight', dtype=tf.float32)
-    dist = tf.reduce_sum(distStack * w, axis=0)
-
-    s, i = tf.nn.top_k(dist, k=nRef, sorted=True)
-    cat_i = tf.reshape(tf.transpose(tf.range(0, 2.0) * tf.ones((2, 2))), [2, 2, 1])
-    cat_i = tf.cast(cat_i, tf.int32)
-    i = tf.reshape(i, [2, 2, 1])
-    ee = tf.concat([i, cat_i], axis=-1)
-    result = tf.gather_nd(prefs, ee)
-
-    prediction = tf.reduce_mean(result, axis=-1)
-
-    # cost = tf.reduce_mean(tf.square(prediction - prefs))
-    # optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
-    init = tf.global_variables_initializer()
-
-    #Training
-    costs = []
-    with tf.Session() as sess:
-        sess.run(init)
-        test = sess.run(result)
-        print(test)
-
-# tt1 = np.array([[1, 2, 3], [4, 5, 6]], dtype='float32')
-# tt2 = np.array([[10, 20, 30], [60, 50, 40]], dtype='float32')
-# prefs = np.array([[15, 25, 35], [1.5, None, 3.5]], dtype='float32')
-# np.sum(np.stack([tt1, tt2]) * np.array([[[0.1]], [[0.5]]]), axis=0)
-# ensembleWeight_as([tt1, tt2], prefs, 2)
-
-
-
-
 '''
 ------------------------------------------------------------
 Ensemble model
@@ -99,7 +59,7 @@ Ensemble model
 - Read in the data and functions in 1. and 2. by hand.
 ------------------------------------------------------------
 '''
-"Average prediction"
+#--Average prediction
 #CF, personality, and content based ensemble
 def ensemble_ap(predictions, nEpoch=2000, graph=False):
 
@@ -168,109 +128,6 @@ ax.legend(loc=(1.03, 0.6))
 ax.set(xlabel='Number of reference', ylabel='Weight proportion', title='Ensemble weight proportion by number of reference')
 plt.show()
 plt.close()
-
-
-
-
-"Average similarity"
-#--Matrix prediction and evaluation
-def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, title, graph=False):
-    
-    #Deal with empty
-    #Create distance matrix, diagonal = 0, others = 2
-    #(distance range from 0 to 2)
-    if len(m_w) == 0: m_dists = [-(np.eye(nM) * 2) + 2]; m_w = [1]
-    if len(n_w) == 0: n_dists = [-(np.eye(nN) * 2) + 2]; n_w = [1]
-
-    #Transform input into proper format
-    m_dists = np.stack(m_dists) if len(m_dists) > 0 else np.empty((0, 0)) #Deal with CF only
-    n_dists = np.stack(n_dists)
-    m_w = np.array(m_w).reshape((len(m_w), 1, 1))
-    n_w = np.array(n_w).reshape((len(n_w), 1, 1))
-
-    #Save a copy of the input dists for CF
-    m_dists_input = m_dists.copy()
-
-    #Prepare an empty prediction hull
-    predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
-
-    #Prediction, each cell by each cell
-    for m in range(nM):
-        for n in gameRatedByRater[m]:
-            
-            if DEBUG:
-                if m != 2 or n != 1: continue
-                
-            #Mask the pref_nan to acquire training (reference) data
-            pref_train = pref_nan.copy()
-            pref_train[m, n] = np.nan
-
-            #Impute nan with total mean and adjust by column and row effects
-            pref_train = imputation(pref_train)
-
-            #If we are going to include CF dist
-            #Each rating uses the corresponding cf similarity
-            if len(m_dists_input) < len(m_w):
-
-                #Get CF dist and append to m_dists
-                #nf = number of features used in SVD
-                m_dist_cf = SVD(pref_train, nf=20)
-                m_dist_cf = m_dist_cf.reshape((1, ) + m_dist_cf.shape)
-                m_dists = np.concatenate((m_dists_input, m_dist_cf), axis=0) if len(m_dists_input) > 0 else np.stack(m_dist_cf)
-
-            #Flip distances (2 to 0) to similarities (0 to 1)
-            #https://docs.scipy.org/doc/scipy-0.19.1/reference/generated/generated/scipy.spatial.distance.cosine.html
-            m_sim = 1 - m_dists / 2
-            n_sim = 1 - n_dists / 2
-
-            if DEBUG: print('m_sim', m_sim)
-            if DEBUG: print('n_sim', n_sim)
-
-            #Combine weighting and similarity
-            m_sim_w = (m_sim ** m_w).sum(axis=0)
-            n_sim_w = (n_sim ** n_w).sum(axis=0)
-
-            if DEBUG: print('m_sim_w', m_sim)
-            if DEBUG: print('n_sim_w', n_sim)
-
-            #Combine two types of similarities
-            mn_sim = np.matmul(m_sim_w[m, :].reshape((nM, 1)), n_sim_w[n, :].reshape((1, nN)))
-
-            if DEBUG: print('mn_sim', mn_sim)
-
-            #Remove self from the matrix 
-            isnan_inv_mn = isnan_inv.copy()
-            isnan_inv_mn[m, n] = False
-
-            #Use negative sign to reverse sort
-            #(index is in flatten and nan removed)
-            refIdx = np.argsort(-mn_sim[isnan_inv_mn])
-            
-            #Acquire only nRef references
-            refIdx = refIdx[:nRef]
-
-            #Flatten, nan removed, and make prediction based on the combined similarity
-            predictions_nan[m, n] = np.sum(pref_train[isnan_inv_mn][refIdx] * mn_sim[isnan_inv_mn][refIdx]) / np.sum(mn_sim[isnan_inv_mn][refIdx])
-
-            if DEBUG: print('ref_rating', pref_train[isnan_inv_mn][refIdx])
-            if DEBUG: print('ref_sim', mn_sim[isnan_inv_mn][refIdx])
-            if DEBUG: print('prediction', predictions_nan[m, n])
-            if DEBUG: print(m, n)
-            if DEBUG: return ["", ""]
-
-    #Take non-nan entries and makes into long-form by [isnan_inv] slicing
-    predictions_en = predictions_nan[isnan_inv]
-
-    #Evaluation
-    mse_en, cor_en = evalModel(predictions_en, prefs, nMN, title=title + ' (reference = {})'.format(nRef), graph=graph)
-
-    #Return the predicted value
-    return predictions_en, cor_en
-
-DEBUG = False
-#Use nRef = -1 to employ all cells other than self
-#u_dist_person  u_dist_demo  dist_triplet  dist_review
-predictions_en, cor_en = ensemble_as(nRef=10, m_dists=[], n_dists=[dist_triplet], m_w=[1], n_w=[1], title='General model (test)', graph=False)
 
 
 
