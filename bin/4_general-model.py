@@ -85,42 +85,84 @@ def gen_dist2sim(m_dists, n_dists, _cf, pref_train):
 
 
 #--Ensemble model weighting
-#Average similarity
-def ensembleWeight_as(distStack, prefs, nRef, nEpoch=2000, graph=False):
+#Prepare data
+def gen_preData():
+
+    return (m_dists, n_dists, len(m_dists), len(n_dists), pref_train)
+
+#Create graph
+def gen_graph(nMDist, nNDist, nRef, learning_rate):
+    tf.reset_default_graph()
+
+    #Variables to be learnt
+    m_w = tf.Variable(np.zeros([nMDist, 1, 1]), name='m_w', dtype=tf.float32)
+    n_w = tf.Variable(np.zeros([nNDist, 1, 1]), name='n_w', dtype=tf.float32)
+
+    #Input
+    pref_train = tf.placeholder(tf.float32, [nM, nN], name='pref_train')
+    mask = tf.placeholder(tf.bool, [nM, nN], name='mask')
+    m_sim = tf.placeholder(tf.float32, [nMDist, nM, nM], name='m_sim')
+    n_sim = tf.placeholder(tf.float32, [nNDist, nN, nN], name='n_sim')
+    pref_true = tf.placeholder(tf.float32, [1], name='pref_true')
+    m_id = tf.placeholder(tf.int32, [1], name='m_id')
+    n_id = tf.placeholder(tf.int32, [1], name='n_id')
     
-    #Initialization
-    #Minimize MSE
-    tf.reset_default_graph()1
-    learning_rate = 0.01
-    distStack = tf.Variable(np.stack([tt1, tt2]), name='test', dtype=tf.float32)
-    w = tf.Variable(np.ones((2, 1, 1)), name='weight', dtype=tf.float32)
-    dist = tf.reduce_sum(distStack * w, axis=0)
+    #Intermediate
+    m_sim_w = tf.reduce_sum(m_sim ** tf.tile(m_w, [1, nM, nM]), axis=0)
+    n_sim_w = tf.reduce_sum(n_sim ** tf.tile(n_w, [1, nN, nN]), axis=0)
+    mn_sim = tf.matmul(tf.reshape(m_sim_w[m_id, :], [nM, 1]), tf.reshape(n_sim_w[n_id, :], [1, nN]))
+    mn_sim_mask = tf.reshape(tf.boolean_mask(mn_sim, mask), [-1])
+    pref_train_mask = tf.reshape(tf.boolean_mask(pref_train, mask), [-1])
+    _, refIdx = tf.nn.top_k(mn_sim_mask, k=nRef, sorted=True)
+    refIdx = refIdx[:nRef]
 
-    s, i = tf.nn.top_k(dist, k=nRef, sorted=True)
-    cat_i = tf.reshape(tf.transpose(tf.range(0, 2.0) * tf.ones((2, 2))), [2, 2, 1])
-    cat_i = tf.cast(cat_i, tf.int32)
-    i = tf.reshape(i, [2, 2, 1])
-    ee = tf.concat([i, cat_i], axis=-1)
-    result = tf.gather_nd(prefs, ee)
+    #Cost (MSE)
+    cost = tf.reduce_sum(tf.gather(pref_train_mask * mn_sim_mask, refIdx)) / tf.reduce_sum(tf.gather(mn_sim_mask, refIdx)) - pref_true
 
-    prediction = tf.reduce_mean(result, axis=-1)
-
-    # cost = tf.reduce_mean(tf.square(prediction - prefs))
-    # optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
+    #Optimizer, initializer
+    opt = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
     init = tf.global_variables_initializer()
 
-    #Training
+    return (cost, opt, init)
+
+gen_graph(2, 1, 10, 0.01)
+
+
+#Learn weight (average similarity)
+def gen_learnWeight(data, nRef, nEpoch, learning_rate, graph=False):
+
+    #Extract data
+    m_dists, n_dists, nMDist, nNDist, pref_train = data
+
+    #Initialize graph
+    cost, opt, init = gen_graph(nMDist, nNDist, nRef, learning_rate)
+
+    #For graphing
     costs = []
+
     with tf.Session() as sess:
         sess.run(init)
-        test = sess.run(result)
-        print(test)
 
-# tt1 = np.array([[1, 2, 3], [4, 5, 6]], dtype='float32')
-# tt2 = np.array([[10, 20, 30], [60, 50, 40]], dtype='float32')
-# prefs = np.array([[15, 25, 35], [1.5, None, 3.5]], dtype='float32')
-# np.sum(np.stack([tt1, tt2]) * np.array([[[0.1]], [[0.5]]]), axis=0)
-# ensembleWeight_as([tt1, tt2], prefs, 2)
+        for ep in range(nEpoch):
+            #Get track of the cost of each epoch
+            cost_epoch = 0
+
+            for m in range(nM):
+                for n in gameRatedByRater[m]:
+                    _, cost_example = sess.run([opt, cost],
+                        feed_dict={
+                            x_ij: item[1],
+                            pref_true = deMean(pref_nan)[0][m, n]
+                        }
+                    )
+
+                    #Tally the cost for each batch
+                    cost_epoch += cost_example
+
+            if ep % 1 == 0: #For text printing
+                print('Cost after epoch %i: %f' % (ep, cost_epoch))
+            if i % 1 == 0: #For graphing
+                costs.append(cost_batch)
 
 
 
@@ -157,14 +199,14 @@ def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, title, graph=False):
             #Compute CF, transform distance to similarity
             m_sim, n_sim = gen_dist2sim(m_dists, n_dists, _cf, pref_train)
 
-            #Combine weighting and similarity
-            m_sim_w = (m_sim ** m_w).sum(axis=0)
-            n_sim_w = (n_sim ** n_w).sum(axis=0)
+            #Combine weighting and similarity (sequence of product)
+            m_sim_w = (m_sim ** m_w).prod(axis=0)
+            n_sim_w = (n_sim ** n_w).prod(axis=0)
 
             if DEBUG: print('m_sim_w', m_sim)
             if DEBUG: print('n_sim_w', n_sim)
 
-            #Combine two types of similarities
+            #Combine two types of similarities (product)
             mn_sim = np.matmul(m_sim_w[m, :].reshape((nM, 1)), n_sim_w[n, :].reshape((1, nN)))
 
             if DEBUG: print('mn_sim', mn_sim)
@@ -175,7 +217,7 @@ def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, title, graph=False):
             refIdx = np.argsort(-mn_sim[mask])[:nRef]
 
             #Flatten, nan removed, and make prediction based on the combined similarity
-            predictions_nan[m, n] = np.sum(pref_train[mask][refIdx] * mn_sim[mask][refIdx]) / np.sum(mn_sim[mask][refIdx])
+            predictions_nan[m, n] = np.sum((pref_train[mask] * mn_sim[mask])[refIdx]) / np.sum(mn_sim[mask][refIdx])
 
             if DEBUG: print('ref_rating', pref_train[mask][refIdx])
             if DEBUG: print('ref_sim', mn_sim[mask][refIdx])
@@ -195,4 +237,4 @@ def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, title, graph=False):
 DEBUG = False
 #Use nRef = -1 to employ all cells other than self
 #u_dist_person  u_dist_demo  dist_triplet  dist_review
-predictions_en, cor_en = ensemble_as(nRef=5, m_dists=[], n_dists=[dist_triplet], m_w=[], n_w=[1], title='General model (test)', graph=False)
+predictions_en, cor_en = ensemble_as(nRef=5, m_dists=[], n_dists=[dist_triplet, dist_review], m_w=[], n_w=[1, 1], title='General model (test)', graph=False)
