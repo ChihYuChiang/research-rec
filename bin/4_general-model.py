@@ -90,10 +90,11 @@ def gen_dist2sim(m_dists, n_dists, _cf, pref_train):
 Ensemble model weight learning
 ------------------------------------------------------------
 '''
-#Pack data
-def gen_packData(m_dists, n_dists, _cf):
+#--Prepare data
+#Initialize data
+def gen_iniData(m_dists, n_dists, _cf):
     m_dists, n_dists = gen_ini_dist(m_dists, n_dists, _cf)
-    return (m_dists, n_dists, _cf, len(m_dists) + _cf, len(n_dists))
+    return (m_dists, n_dists, len(m_dists) + _cf, len(n_dists))
 
 #Compile input dataset
 def gen_npDataset(m_dists, n_dists, _cf, pref_true):
@@ -133,13 +134,20 @@ def gen_npDataset(m_dists, n_dists, _cf, pref_true):
     #Return processed dataset (saving processing, don't use generator)
     return dataset_np, len(dataset_np['ns'])
 
-#Learn weight (average similarity)
-def gen_learnWeight(data, nRef, nEpoch, global_step, learning_rate, note):
+
+#--Learn weight (average similarity)
+def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_rate, title):
+
+    #--Log
+    title += '({})'.format(nRef)
+    print('-' * 60)
+    print(title)
+
 
     #--Initialization
     #Prepare raw data
-    m_dists, n_dists, _cf, nMDist, nNDist = data
-    dataset_np, nExample = gen_npDataset(m_dists, n_dists, _cf, deMean(pref_nan)[0])
+    m_dists_processed, n_dists_processed, nMDist, nNDist = gen_iniData(m_dists, n_dists, _cf)
+    dataset_np, nExample = gen_npDataset(m_dists_processed, n_dists_processed, _cf, deMean(pref_nan)[0])
 
     #Reset graph
     tf.reset_default_graph()
@@ -211,7 +219,7 @@ def gen_learnWeight(data, nRef, nEpoch, global_step, learning_rate, note):
         else: saver.restore(sess, './../data/checkpoint/emb-update-{}'.format(global_step))
 
         #Initialize an iterator over the dataset
-        #(has been repeated by nEpoch)
+        #(has been repeated nEpoch times)
         sess.run(iterator.initializer, feed_dict={
             pref_train_ds: dataset_np['pref_trains'],
             mask_ds: dataset_np['masks'],
@@ -228,17 +236,16 @@ def gen_learnWeight(data, nRef, nEpoch, global_step, learning_rate, note):
             #Get track of the cost of each epoch
             cost_epoch = 0
 
-            #Loop for each example
-            for m in range(nM):
-                for _ in gameRatedByRater[m]:
+            #Loop over number of example
+            for _ in range(nExample):
 
-                    #Run operation
-                    _, cost_example = sess.run([opt, cost])
+                #Run operation
+                _, cost_example = sess.run([opt, cost])
 
-                    #Tally the cost
-                    cost_epoch += cost_example
+                #Tally the cost
+                cost_epoch += cost_example
 
-            if ep % 1 == 0: #For text printing
+            if ep % 10 == 0: #For text printing
                 print('Cost after epoch %i: %f' % (ep, cost_epoch))
             if ep % 1 == 0: #For graphing
                 costs.append(cost_epoch)
@@ -251,21 +258,28 @@ def gen_learnWeight(data, nRef, nEpoch, global_step, learning_rate, note):
         plt.show()
         plt.close()
 
-        #Output1
-        learnedWeight = sess.run({'m': m_w, 'n': n_w, 'b': (b0, b1)})
+        #Output
+        output = sess.run({'m_w': m_w, 'n_w': n_w, 'b': [b0, b1]})
+        print(title)
+        print('m weight:', list(output['m_w'].flatten()))
+        print('n weight:', list(output['n_w'].flatten()))
+        print('b:', list(output['b']))
 
-        saver.save(sess, './../data/checkpoint/gen_weight_{}'.format(note), global_step=global_step + nEpoch)
+        saver.save(sess, './../data/checkpoint/gen_weight_{}'.format(title), global_step=global_step + nEpoch)
 
-        return learnedWeight
+        #Format for plugging into the model function
+        output['m_dists'] = m_dists
+        output['n_dists'] = n_dists
+        output['nRef'] = nRef
+        output['title'] = title
+
+        return output
 
 
 #--Train model
-#u_dist_person  u_dist_demo  dist_triplet  dist_review
-data = gen_packData(m_dists=[], n_dists=[dist_review], _cf=True)
-learnedWeight = gen_learnWeight(data, nRef=-1, global_step=0, nEpoch=30, learning_rate=0.01, note='CF-review')
-print('m weight:', list(learnedWeight['m'].flatten()))
-print('n weight:', list(learnedWeight['n'].flatten()))
-print('b:', list(learnedWeight['b']))
+#u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review
+output_CF8triplet_a = gen_learnWeight(m_dists=[], n_dists=[dist_triplet], _cf=True, nRef=-1, global_step=0, nEpoch=100, learning_rate=0.01, title='CF+triplet')
+output_CF8review_a = gen_learnWeight(m_dists=[], n_dists=[dist_review], _cf=True, nRef=-1, global_step=0, nEpoch=100, learning_rate=0.01, title='CF+review')
 
 
 
@@ -332,7 +346,7 @@ def gen_model(nRef, m_dists, n_dists, m_w, n_w, b, title, graph=False):
     predictions_gen = predictions_nan[isnan_inv]
 
     #Evaluation
-    mse_gen, cor_gen = evalModel(predictions_gen, prefs, nMN, title=title + ' (reference = {})'.format(nRef), graph=graph)
+    mse_gen, cor_gen = evalModel(predictions_gen, prefs, nMN, title=title, graph=graph)
 
     #Return the predicted value
     return predictions_gen, cor_gen
@@ -340,6 +354,8 @@ def gen_model(nRef, m_dists, n_dists, m_w, n_w, b, title, graph=False):
 DEBUG = False
 #Use nRef = -1 to employ all cells other than self
 #u_dist_person  u_dist_demo  dist_triplet  dist_review
-predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_w=[3.9317784], n_w=[14.54035], b=[0, 1], title='General model (R)', graph=False)
-predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_w=[3.6515107], n_w=[15.569304], b=[0.028837901, 1], title='General model (b0+R)', graph=False)
-predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_w=[3.6908505], n_w=[14.863923], b=[-0.29466018, 1.044427], title='General model (b0+b1R)', graph=False)
+predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_w=[3.6908505], n_w=[14.863923], b=[-0.29466018, 1.044427], title='General model (b0+b1R)', graph=True)
+
+#Pipeline input
+predictions_gen, cor_gen = gen_model(**output_CF8triplet)
+
