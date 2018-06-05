@@ -96,8 +96,23 @@ def gen_packData(m_dists, n_dists, _cf):
     m_dists, n_dists = gen_ini_dist(m_dists, n_dists, _cf)
     return (m_dists, n_dists, _cf, len(m_dists) + _cf, len(n_dists))
 
+def gen_dataSet(m_dists, n_dists, _cf, pref_true):
+
+    #Loop for each example
+    for _m in range(nM):
+        for _n in gameRatedByRater[_m]:
+
+            _pref_train, _mask = gen_pref8mask(_m, _n)
+            _m_sim, _n_sim = gen_dist2sim(m_dists, n_dists, _cf, _pref_train)
+            _truth = pref_true[m, n]
+    
+    #Return processed example, saving processing, don't use generator
+    return (_pref_train, _mask, _m_sim, _n_sim, _truth, _m, _n)
+
+gen_dataSet(m_dists, n_dists, _cf, prefs_true)
+
 #Learn weight (average similarity)
-def gen_learnWeight(data, nRef, nEpoch, learning_rate, ini_value=1):
+def gen_learnWeight(data, nRef, nEpoch, global_step, learning_rate, ini_value=1):
 
     #Extract data
     m_dists, n_dists, _cf, nMDist, nNDist = data
@@ -125,22 +140,33 @@ def gen_learnWeight(data, nRef, nEpoch, learning_rate, ini_value=1):
     mn_sim = tf.matmul(tf.reshape(m_sim_w[m_id, :], [nM, 1]), tf.reshape(n_sim_w[n_id, :], [1, nN]))
     mn_sim_mask = tf.reshape(tf.boolean_mask(mn_sim, mask), [-1])
     pref_train_mask = tf.reshape(tf.boolean_mask(pref_train, mask), [-1])
-    _, refIdx = tf.nn.top_k(mn_sim_mask, k=nRef, sorted=True)
-    refIdx = refIdx[:nRef]
 
+    if nRef != -1:
+        _, refIdx = tf.nn.top_k(mn_sim_mask, k=nRef, sorted=True)
+        refIdx = refIdx[:nRef]
+
+    #Prediction
+    if nRef == -1:
+        pred = tf.reduce_sum(pref_train_mask * mn_sim_mask) / tf.reduce_sum(mn_sim_mask)
+    else:
+        pred = tf.reduce_sum(tf.gather(pref_train_mask * mn_sim_mask, refIdx)) / tf.reduce_sum(tf.gather(mn_sim_mask, refIdx))
+    
     #Cost (SE)
-    pred = tf.reduce_sum(tf.gather(pref_train_mask * mn_sim_mask, refIdx)) / tf.reduce_sum(tf.gather(mn_sim_mask, refIdx))
     cost = (pred - pref_true) ** 2
 
     #Optimizer, initializer
     opt = tf.train.AdamOptimizer(learning_rate).minimize(cost)
     init = tf.global_variables_initializer()
+    saver = tf.train.Saver(max_to_keep=5)
 
     #For cost graphing
     costs = []
 
     with tf.Session() as sess:
-        sess.run(init)
+
+        #Initialize vars/restore from checkpoint
+        if global_step == 0: sess.run(init)
+        else: saver.restore(sess, './../data/checkpoint/emb-update-{}'.format(global_step))
 
         for ep in range(nEpoch):
 
@@ -183,16 +209,19 @@ def gen_learnWeight(data, nRef, nEpoch, learning_rate, ini_value=1):
         plt.close()
 
         #Output
-        weight = sess.run({'m': m_w, 'n': n_w})
+        learnedWeight = sess.run({'m': m_w, 'n': n_w})
 
-        return weight
+        saver.save(sess, './../data/checkpoint/emb-update', global_step=global_step + nEpoch)
+
+        return learnedWeight
 
 
 #--Train model
 #u_dist_person  u_dist_demo  dist_triplet  dist_review
-data = gen_packData(m_dists=[u_dist_person, u_dist_demo], n_dists=[dist_triplet], _cf=False)
-weight = gen_learnWeight(data, nRef=10, nEpoch=500, learning_rate=0.01, ini_value=1)
-print(weight['m'], weight['n'])
+data = gen_packData(m_dists=[], n_dists=[dist_review], _cf=True)
+learnedWeight = gen_learnWeight(data, nRef=-1, global_step=0, nEpoch=20, learning_rate=0.01, ini_value=1)
+print('m weight:', list(weight['m'].flatten()))
+print('n weight:', list(weight['n'].flatten()))
 
 
 
@@ -267,4 +296,4 @@ def gen_model(nRef, m_dists, n_dists, m_w, n_w, title, graph=False):
 DEBUG = False
 #Use nRef = -1 to employ all cells other than self
 #u_dist_person  u_dist_demo  dist_triplet  dist_review
-predictions_gen, cor_gen = gen_model(nRef=10, m_dists=[u_dist_person], n_dists=[dist_triplet], m_w=[1], n_w=[1], title='General model (test)', graph=False)
+predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_w=[3.9317784], n_w=[14.54035], title='General model (test)', graph=False)
