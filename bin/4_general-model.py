@@ -84,98 +84,128 @@ def gen_dist2sim(m_dists, n_dists, _cf, pref_train):
     return (m_sim, n_sim)
 
 
-#--Ensemble model weighting
-#Prepare data
-def gen_preData():
 
-    return (m_dists, n_dists, len(m_dists), len(n_dists), pref_train)
 
-#Create graph
-def gen_graph(nMDist, nNDist, nRef, learning_rate):
+'''
+------------------------------------------------------------
+Ensemble model weight learning
+------------------------------------------------------------
+'''
+#Pack data
+def gen_packData(m_dists, n_dists, _cf):
+    m_dists, n_dists = gen_ini_dist(m_dists, n_dists, _cf)
+    return (m_dists, n_dists, _cf, len(m_dists) + _cf, len(n_dists))
+
+#Learn weight (average similarity)
+def gen_learnWeight(data, nRef, nEpoch, learning_rate, ini_value=1):
+
+    #Extract data
+    m_dists, n_dists, _cf, nMDist, nNDist = data
+    prefs_true = deMean(pref_nan)[0]
+
+    #Reset graph
     tf.reset_default_graph()
 
     #Variables to be learnt
-    m_w = tf.Variable(np.zeros([nMDist, 1, 1]), name='m_w', dtype=tf.float32)
-    n_w = tf.Variable(np.zeros([nNDist, 1, 1]), name='n_w', dtype=tf.float32)
+    m_w = tf.Variable(np.full([nMDist, 1, 1], ini_value), name='m_w', dtype=tf.float32)
+    n_w = tf.Variable(np.full([nNDist, 1, 1], ini_value), name='n_w', dtype=tf.float32)
 
     #Input
     pref_train = tf.placeholder(tf.float32, [nM, nN], name='pref_train')
     mask = tf.placeholder(tf.bool, [nM, nN], name='mask')
     m_sim = tf.placeholder(tf.float32, [nMDist, nM, nM], name='m_sim')
     n_sim = tf.placeholder(tf.float32, [nNDist, nN, nN], name='n_sim')
-    pref_true = tf.placeholder(tf.float32, [1], name='pref_true')
-    m_id = tf.placeholder(tf.int32, [1], name='m_id')
-    n_id = tf.placeholder(tf.int32, [1], name='n_id')
-    
+    pref_true = tf.placeholder(tf.float32, [], name='pref_true')
+    m_id = tf.placeholder(tf.int32, [], name='m_id')
+    n_id = tf.placeholder(tf.int32, [], name='n_id')
+
     #Intermediate
-    m_sim_w = tf.reduce_sum(m_sim ** tf.tile(m_w, [1, nM, nM]), axis=0)
-    n_sim_w = tf.reduce_sum(n_sim ** tf.tile(n_w, [1, nN, nN]), axis=0)
+    m_sim_w = tf.reduce_prod(m_sim ** tf.tile(m_w, [1, nM, nM]), axis=0)
+    n_sim_w = tf.reduce_prod(n_sim ** tf.tile(n_w, [1, nN, nN]), axis=0)
     mn_sim = tf.matmul(tf.reshape(m_sim_w[m_id, :], [nM, 1]), tf.reshape(n_sim_w[n_id, :], [1, nN]))
     mn_sim_mask = tf.reshape(tf.boolean_mask(mn_sim, mask), [-1])
     pref_train_mask = tf.reshape(tf.boolean_mask(pref_train, mask), [-1])
     _, refIdx = tf.nn.top_k(mn_sim_mask, k=nRef, sorted=True)
     refIdx = refIdx[:nRef]
 
-    #Cost (MSE)
-    cost = tf.reduce_sum(tf.gather(pref_train_mask * mn_sim_mask, refIdx)) / tf.reduce_sum(tf.gather(mn_sim_mask, refIdx)) - pref_true
+    #Cost (SE)
+    pred = tf.reduce_sum(tf.gather(pref_train_mask * mn_sim_mask, refIdx)) / tf.reduce_sum(tf.gather(mn_sim_mask, refIdx))
+    cost = (pred - pref_true) ** 2
 
     #Optimizer, initializer
-    opt = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
+    opt = tf.train.AdamOptimizer(learning_rate).minimize(cost)
     init = tf.global_variables_initializer()
 
-    return (cost, opt, init)
-
-gen_graph(2, 1, 10, 0.01)
-
-
-#Learn weight (average similarity)
-def gen_learnWeight(data, nRef, nEpoch, learning_rate, graph=False):
-
-    #Extract data
-    m_dists, n_dists, nMDist, nNDist, pref_train = data
-
-    #Initialize graph
-    cost, opt, init = gen_graph(nMDist, nNDist, nRef, learning_rate)
-
-    #For graphing
+    #For cost graphing
     costs = []
 
     with tf.Session() as sess:
         sess.run(init)
 
         for ep in range(nEpoch):
+
             #Get track of the cost of each epoch
             cost_epoch = 0
 
+            #Loop for each example
             for m in range(nM):
                 for n in gameRatedByRater[m]:
+
+                    _pref_train, _mask = gen_pref8mask(m, n)
+                    _m_sim, _n_sim = gen_dist2sim(m_dists, n_dists, _cf, _pref_train)
+
                     _, cost_example = sess.run([opt, cost],
                         feed_dict={
-                            x_ij: item[1],
-                            pref_true = deMean(pref_nan)[0][m, n]
+                            pref_train: _pref_train,
+                            mask: _mask,
+                            m_sim: _m_sim,
+                            n_sim: _n_sim,
+                            pref_true: prefs_true[m, n],
+                            m_id: m,
+                            n_id: n
                         }
                     )
 
-                    #Tally the cost for each batch
+                    #Tally the cost
                     cost_epoch += cost_example
 
             if ep % 1 == 0: #For text printing
                 print('Cost after epoch %i: %f' % (ep, cost_epoch))
-            if i % 1 == 0: #For graphing
-                costs.append(cost_batch)
+            if ep % 1 == 0: #For graphing
+                costs.append(cost_epoch)
+        
+        #Graphing the change of the costs
+        plt.plot(np.squeeze(costs))
+        plt.ylabel('cost')
+        plt.xlabel('iterations (per batch)')
+        plt.title("Learning rate =" + str(learning_rate))
+        plt.show()
+        plt.close()
+
+        #Output
+        weight = sess.run({'m': m_w, 'n': n_w})
+
+        return weight
+
+
+#--Train model
+#u_dist_person  u_dist_demo  dist_triplet  dist_review
+data = gen_packData(m_dists=[u_dist_person, u_dist_demo], n_dists=[dist_triplet], _cf=False)
+weight = gen_learnWeight(data, nRef=10, nEpoch=500, learning_rate=0.01, ini_value=1)
+print(weight['m'], weight['n'])
 
 
 
 
 '''
 ------------------------------------------------------------
-Ensemble model
+Model
 
 - Read in the data and functions in 1. and 2. by hand.
 ------------------------------------------------------------
 '''
 #--Average similarity
-def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, title, graph=False):
+def gen_model(nRef, m_dists, n_dists, m_w, n_w, title, graph=False):
     
     #Initialize
     _cf = len(m_dists) < len(m_w) #Marker, if include cf in model
@@ -226,15 +256,15 @@ def ensemble_as(nRef, m_dists, n_dists, m_w, n_w, title, graph=False):
             if DEBUG: return ["", ""]
 
     #Take non-nan entries and makes into long-form by [isnan_inv] slicing
-    predictions_en = predictions_nan[isnan_inv]
+    predictions_gen = predictions_nan[isnan_inv]
 
     #Evaluation
-    mse_en, cor_en = evalModel(predictions_en, prefs, nMN, title=title + ' (reference = {})'.format(nRef), graph=graph)
+    mse_gen, cor_gen = evalModel(predictions_gen, prefs, nMN, title=title + ' (reference = {})'.format(nRef), graph=graph)
 
     #Return the predicted value
-    return predictions_en, cor_en
+    return predictions_gen, cor_gen
 
 DEBUG = False
 #Use nRef = -1 to employ all cells other than self
 #u_dist_person  u_dist_demo  dist_triplet  dist_review
-predictions_en, cor_en = ensemble_as(nRef=5, m_dists=[], n_dists=[dist_triplet, dist_review], m_w=[], n_w=[1, 1], title='General model (test)', graph=False)
+predictions_gen, cor_gen = gen_model(nRef=10, m_dists=[u_dist_person], n_dists=[dist_triplet], m_w=[1], n_w=[1], title='General model (test)', graph=False)
