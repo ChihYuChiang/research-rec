@@ -11,7 +11,6 @@ DEBUG = False
 Component functions
 ------------------------------------------------------------
 '''
-#--Initialize model
 #Initialize distance
 def gen_ini_dist(m_dists, n_dists, _cf):
 
@@ -96,44 +95,84 @@ def gen_packData(m_dists, n_dists, _cf):
     m_dists, n_dists = gen_ini_dist(m_dists, n_dists, _cf)
     return (m_dists, n_dists, _cf, len(m_dists) + _cf, len(n_dists))
 
-def gen_dataSet(m_dists, n_dists, _cf, pref_true):
+#Compile input dataset
+def gen_npDataset(m_dists, n_dists, _cf, pref_true):
+
+    #Empty containers
+    pref_trains, masks, m_sims, n_sims, truths, ms, ns = ([] for i in range(7))
 
     #Loop for each example
-    for _m in range(nM):
-        for _n in gameRatedByRater[_m]:
+    for m in range(nM):
+        for n in gameRatedByRater[m]:
 
-            _pref_train, _mask = gen_pref8mask(_m, _n)
-            _m_sim, _n_sim = gen_dist2sim(m_dists, n_dists, _cf, _pref_train)
-            _truth = pref_true[m, n]
-    
-    #Return processed example, saving processing, don't use generator
-    return (_pref_train, _mask, _m_sim, _n_sim, _truth, _m, _n)
+            #Prepare all required inputs
+            pref_train, mask = gen_pref8mask(m, n)
+            m_sim, n_sim = gen_dist2sim(m_dists, n_dists, _cf, pref_train)
+            truth = pref_true[m, n]
 
-gen_dataSet(m_dists, n_dists, _cf, prefs_true)
+            pref_trains.append(pref_train)
+            masks.append(mask)
+            m_sims.append(m_sim)
+            n_sims.append(n_sim)
+            truths.append(truth)
+            ms.append(m)
+            ns.append(n)
+
+    #Create tf dataset
+    #Require np arrays; cast type explicitly
+    dataset_np = {
+        'pref_trains': np.stack(pref_trains).astype(np.float32),
+        'masks': np.stack(masks).astype(np.bool),
+        'm_sims': np.stack(m_sims).astype(np.float32),
+        'n_sims': np.stack(n_sims).astype(np.float32),
+        'truths': np.array(truths).astype(np.float32),
+        'ms': np.array(ms).astype(np.int32),
+        'ns': np.array(ns).astype(np.int32)
+    }
+
+    #Return processed dataset (saving processing, don't use generator)
+    return dataset_np, len(dataset_np['ns'])
 
 #Learn weight (average similarity)
-def gen_learnWeight(data, nRef, nEpoch, global_step, learning_rate, ini_value=1):
+def gen_learnWeight(data, nRef, nEpoch, global_step, learning_rate, note):
 
-    #Extract data
+    #--Initialization
+    #Prepare raw data
     m_dists, n_dists, _cf, nMDist, nNDist = data
-    prefs_true = deMean(pref_nan)[0]
+    dataset_np, nExample = gen_npDataset(m_dists, n_dists, _cf, deMean(pref_nan)[0])
 
     #Reset graph
     tf.reset_default_graph()
 
-    #Variables to be learnt
-    m_w = tf.Variable(np.full([nMDist, 1, 1], ini_value), name='m_w', dtype=tf.float32)
-    n_w = tf.Variable(np.full([nNDist, 1, 1], ini_value), name='n_w', dtype=tf.float32)
 
-    #Input
-    pref_train = tf.placeholder(tf.float32, [nM, nN], name='pref_train')
-    mask = tf.placeholder(tf.bool, [nM, nN], name='mask')
-    m_sim = tf.placeholder(tf.float32, [nMDist, nM, nM], name='m_sim')
-    n_sim = tf.placeholder(tf.float32, [nNDist, nN, nN], name='n_sim')
-    pref_true = tf.placeholder(tf.float32, [], name='pref_true')
-    m_id = tf.placeholder(tf.int32, [], name='m_id')
-    n_id = tf.placeholder(tf.int32, [], name='n_id')
+    #--Variables to be learnt
+    m_w = tf.Variable(np.ones([nMDist, 1, 1]), name='m_w', dtype=tf.float32)
+    n_w = tf.Variable(np.ones([nNDist, 1, 1]), name='n_w', dtype=tf.float32)
+    b0 = tf.Variable(0.0, name='b0', dtype=tf.float32)
+    b1 = tf.Variable(1.0, name='b1', dtype=tf.float32)
 
+
+    #--Input
+    #Input placeholders
+    pref_train_ds = tf.placeholder(tf.float32, [nExample, nM, nN], name='pref_train')
+    mask_ds = tf.placeholder(tf.bool, [nExample, nM, nN], name='mask')
+    m_sim_ds = tf.placeholder(tf.float32, [nExample, nMDist, nM, nM], name='m_sim')
+    n_sim_ds = tf.placeholder(tf.float32, [nExample, nNDist, nN, nN], name='n_sim')
+    pref_true_ds = tf.placeholder(tf.float32, [nExample], name='pref_true')
+    m_id_ds = tf.placeholder(tf.int32, [nExample], name='m_id')
+    n_id_ds = tf.placeholder(tf.int32, [nExample], name='n_id')
+
+    #Dataset and iterator
+    dataset = tf.data.Dataset.from_tensor_slices((
+        pref_train_ds, mask_ds,
+        m_sim_ds, n_sim_ds, pref_true_ds, m_id_ds, n_id_ds
+    ))
+    dataset = dataset.repeat(nEpoch)
+    iterator = dataset.make_initializable_iterator()
+    pref_train, mask, m_sim, n_sim, pref_true, m_id, n_id = iterator.get_next()
+
+
+    #--Operations
     #Intermediate
     m_sim_w = tf.reduce_prod(m_sim ** tf.tile(m_w, [1, nM, nM]), axis=0)
     n_sim_w = tf.reduce_prod(n_sim ** tf.tile(n_w, [1, nN, nN]), axis=0)
@@ -147,18 +186,21 @@ def gen_learnWeight(data, nRef, nEpoch, global_step, learning_rate, ini_value=1)
 
     #Prediction
     if nRef == -1:
-        pred = tf.reduce_sum(pref_train_mask * mn_sim_mask) / tf.reduce_sum(mn_sim_mask)
+        pred = b0 + b1 * (tf.reduce_sum(pref_train_mask * mn_sim_mask) / tf.reduce_sum(mn_sim_mask))
     else:
-        pred = tf.reduce_sum(tf.gather(pref_train_mask * mn_sim_mask, refIdx)) / tf.reduce_sum(tf.gather(mn_sim_mask, refIdx))
+        pred = b0 + b1 * (tf.reduce_sum(tf.gather(pref_train_mask * mn_sim_mask, refIdx)) / tf.reduce_sum(tf.gather(mn_sim_mask, refIdx)))
     
     #Cost (SE)
     cost = (pred - pref_true) ** 2
 
-    #Optimizer, initializer
+
+    #--Optimizer, initializer, saver
     opt = tf.train.AdamOptimizer(learning_rate).minimize(cost)
     init = tf.global_variables_initializer()
     saver = tf.train.Saver(max_to_keep=5)
 
+
+    #--Session
     #For cost graphing
     costs = []
 
@@ -168,6 +210,19 @@ def gen_learnWeight(data, nRef, nEpoch, global_step, learning_rate, ini_value=1)
         if global_step == 0: sess.run(init)
         else: saver.restore(sess, './../data/checkpoint/emb-update-{}'.format(global_step))
 
+        #Initialize an iterator over the dataset
+        #(has been repeated by nEpoch)
+        sess.run(iterator.initializer, feed_dict={
+            pref_train_ds: dataset_np['pref_trains'],
+            mask_ds: dataset_np['masks'],
+            m_sim_ds: dataset_np['m_sims'],
+            n_sim_ds: dataset_np['n_sims'],
+            pref_true_ds: dataset_np['truths'],
+            m_id_ds: dataset_np['ms'],
+            n_id_ds: dataset_np['ns']
+        })
+
+        #Loop over number of epochs
         for ep in range(nEpoch):
 
             #Get track of the cost of each epoch
@@ -175,22 +230,10 @@ def gen_learnWeight(data, nRef, nEpoch, global_step, learning_rate, ini_value=1)
 
             #Loop for each example
             for m in range(nM):
-                for n in gameRatedByRater[m]:
+                for _ in gameRatedByRater[m]:
 
-                    _pref_train, _mask = gen_pref8mask(m, n)
-                    _m_sim, _n_sim = gen_dist2sim(m_dists, n_dists, _cf, _pref_train)
-
-                    _, cost_example = sess.run([opt, cost],
-                        feed_dict={
-                            pref_train: _pref_train,
-                            mask: _mask,
-                            m_sim: _m_sim,
-                            n_sim: _n_sim,
-                            pref_true: prefs_true[m, n],
-                            m_id: m,
-                            n_id: n
-                        }
-                    )
+                    #Run operation
+                    _, cost_example = sess.run([opt, cost])
 
                     #Tally the cost
                     cost_epoch += cost_example
@@ -208,10 +251,10 @@ def gen_learnWeight(data, nRef, nEpoch, global_step, learning_rate, ini_value=1)
         plt.show()
         plt.close()
 
-        #Output
-        learnedWeight = sess.run({'m': m_w, 'n': n_w})
+        #Output1
+        learnedWeight = sess.run({'m': m_w, 'n': n_w, 'b': (b0, b1)})
 
-        saver.save(sess, './../data/checkpoint/emb-update', global_step=global_step + nEpoch)
+        saver.save(sess, './../data/checkpoint/gen_weight_{}'.format(note), global_step=global_step + nEpoch)
 
         return learnedWeight
 
@@ -219,9 +262,10 @@ def gen_learnWeight(data, nRef, nEpoch, global_step, learning_rate, ini_value=1)
 #--Train model
 #u_dist_person  u_dist_demo  dist_triplet  dist_review
 data = gen_packData(m_dists=[], n_dists=[dist_review], _cf=True)
-learnedWeight = gen_learnWeight(data, nRef=-1, global_step=0, nEpoch=20, learning_rate=0.01, ini_value=1)
-print('m weight:', list(weight['m'].flatten()))
-print('n weight:', list(weight['n'].flatten()))
+learnedWeight = gen_learnWeight(data, nRef=-1, global_step=0, nEpoch=30, learning_rate=0.01, note='CF-review')
+print('m weight:', list(learnedWeight['m'].flatten()))
+print('n weight:', list(learnedWeight['n'].flatten()))
+print('b:', list(learnedWeight['b']))
 
 
 
@@ -234,7 +278,7 @@ Model
 ------------------------------------------------------------
 '''
 #--Average similarity
-def gen_model(nRef, m_dists, n_dists, m_w, n_w, title, graph=False):
+def gen_model(nRef, m_dists, n_dists, m_w, n_w, b, title, graph=False):
     
     #Initialize
     _cf = len(m_dists) < len(m_w) #Marker, if include cf in model
@@ -276,7 +320,7 @@ def gen_model(nRef, m_dists, n_dists, m_w, n_w, title, graph=False):
             refIdx = np.argsort(-mn_sim[mask])[:nRef]
 
             #Flatten, nan removed, and make prediction based on the combined similarity
-            predictions_nan[m, n] = np.sum((pref_train[mask] * mn_sim[mask])[refIdx]) / np.sum(mn_sim[mask][refIdx])
+            predictions_nan[m, n] = b[0] + b[1] * (np.sum((pref_train[mask] * mn_sim[mask])[refIdx]) / np.sum(mn_sim[mask][refIdx]))
 
             if DEBUG: print('ref_rating', pref_train[mask][refIdx])
             if DEBUG: print('ref_sim', mn_sim[mask][refIdx])
@@ -296,4 +340,6 @@ def gen_model(nRef, m_dists, n_dists, m_w, n_w, title, graph=False):
 DEBUG = False
 #Use nRef = -1 to employ all cells other than self
 #u_dist_person  u_dist_demo  dist_triplet  dist_review
-predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_w=[3.9317784], n_w=[14.54035], title='General model (test)', graph=False)
+predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_w=[3.9317784], n_w=[14.54035], b=[0, 1], title='General model (R)', graph=False)
+predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_w=[3.6515107], n_w=[15.569304], b=[0.028837901, 1], title='General model (b0+R)', graph=False)
+predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_w=[3.6908505], n_w=[14.863923], b=[-0.29466018, 1.044427], title='General model (b0+b1R)', graph=False)
