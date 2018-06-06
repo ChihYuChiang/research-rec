@@ -2,8 +2,14 @@ import numpy as np
 from scipy.stats import t as dis_t
 import matplotlib.pyplot as plt
 from util import *
+import warnings
 
 DEBUG = False
+
+#Suppress warning due to tf gather
+if not DEBUG: warnings.filterwarnings("ignore")
+
+
 
 
 '''
@@ -136,7 +142,7 @@ def gen_npDataset(m_dists, n_dists, _cf, pref_true):
 
 
 #--Learn weight (average similarity)
-def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_rate, title):
+def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_rate, title, graph=False):
 
     #--Log
     title += '({})'.format(nRef)
@@ -251,16 +257,16 @@ def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_r
                 costs.append(cost_epoch)
         
         #Graphing the change of the costs
-        plt.plot(np.squeeze(costs))
-        plt.ylabel('cost')
-        plt.xlabel('iterations (per batch)')
-        plt.title("Learning rate =" + str(learning_rate))
-        plt.show()
-        plt.close()
+        if graph:
+            plt.plot(np.squeeze(costs))
+            plt.ylabel('cost')
+            plt.xlabel('iterations (per batch)')
+            plt.title("Learning rate =" + str(learning_rate))
+            plt.show()
+            plt.close()
 
         #Output
         output = sess.run({'m_w': m_w, 'n_w': n_w, 'b': [b0, b1]})
-        print(title)
         print('m weight:', list(output['m_w'].flatten()))
         print('n weight:', list(output['n_w'].flatten()))
         print('b:', list(output['b']))
@@ -278,8 +284,8 @@ def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_r
 
 #--Train model
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review
-output_CF8triplet_a = gen_learnWeight(m_dists=[], n_dists=[dist_triplet], _cf=True, nRef=-1, global_step=0, nEpoch=100, learning_rate=0.01, title='CF+triplet')
-output_CF8review_a = gen_learnWeight(m_dists=[], n_dists=[dist_review], _cf=True, nRef=-1, global_step=0, nEpoch=100, learning_rate=0.01, title='CF+review')
+output_1 = gen_learnWeight(m_dists=[u_dist_sat], n_dists=[], _cf=True, nRef=-1, global_step=0, nEpoch=100, learning_rate=0.01, title='CF+satisfaction')
+output_2 = gen_learnWeight(m_dists=[u_dist_sat], n_dists=[], _cf=True, nRef=20, global_step=0, nEpoch=100, learning_rate=0.01, title='CF+satisfaction')
 
 
 
@@ -357,5 +363,6 @@ DEBUG = False
 predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_w=[3.6908505], n_w=[14.863923], b=[-0.29466018, 1.044427], title='General model (b0+b1R)', graph=True)
 
 #Pipeline input
-predictions_gen, cor_gen = gen_model(**output_CF8triplet)
+predictions_gen, cor_gen = gen_model(**output_1)
+predictions_gen, cor_gen = gen_model(**output_2)
 
