@@ -74,7 +74,7 @@ def gen_dist2sim(m_dists, n_dists, _cf, pref_train):
         #nf = number of features used in SVD
         m_dist_cf = SVD(pref_train, nf=20)
         m_dist_cf = m_dist_cf.reshape((1, ) + m_dist_cf.shape)
-        m_dists_processed = np.concatenate((m_dists, m_dist_cf), axis=0) if len(m_dists) > 0 else np.stack(m_dist_cf)
+        m_dists_processed = np.concatenate((m_dist_cf, m_dists), axis=0) if len(m_dists) > 0 else np.stack(m_dist_cf)
     
     else: m_dists_processed = m_dists
 
@@ -274,6 +274,8 @@ def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_r
         saver.save(sess, './../data/checkpoint/gen_weight_{}'.format(title), global_step=global_step + nEpoch)
 
         #Format for plugging into the model function
+        if len(m_dists) + _cf == 0: output['m_w'] = []
+        if len(n_dists) == 0: output['n_w'] = []
         output['m_dists'] = m_dists
         output['n_dists'] = n_dists
         output['nRef'] = nRef
@@ -284,8 +286,8 @@ def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_r
 
 #--Train model
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review
-output_1 = gen_learnWeight(m_dists=[u_dist_sat], n_dists=[], _cf=True, nRef=-1, global_step=0, nEpoch=100, learning_rate=0.01, title='CF+satisfaction')
-output_2 = gen_learnWeight(m_dists=[u_dist_sat], n_dists=[], _cf=True, nRef=20, global_step=0, nEpoch=100, learning_rate=0.01, title='CF+satisfaction')
+output_1 = gen_learnWeight(m_dists=[u_dist_person, u_dist_sat], n_dists=[], _cf=True, nRef=-1, global_step=0, nEpoch=100, learning_rate=0.01, title='CF+person+satisfaction')
+output_2 = gen_learnWeight(m_dists=[u_dist_person, u_dist_sat], n_dists=[], _cf=True, nRef=20, global_step=0, nEpoch=100, learning_rate=0.01, title='CF+person+satisfaction')
 
 
 
@@ -359,7 +361,7 @@ def gen_model(nRef, m_dists, n_dists, m_w, n_w, b, title, graph=False):
 
 DEBUG = False
 #Use nRef = -1 to employ all cells other than self
-#u_dist_person  u_dist_demo  dist_triplet  dist_review
+#u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review
 predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_w=[3.6908505], n_w=[14.863923], b=[-0.29466018, 1.044427], title='General model (b0+b1R)', graph=True)
 
 #Pipeline input
