@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import pandas as pd
+import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
 from util import *
@@ -33,16 +34,27 @@ emb_review = emb_review_raw.drop('id', axis=1).groupby('coreId').mean().as_matri
 print('emb_review shape: ', emb_review.shape)
 
 
+#--Matrix from genre (70 genres)
+genre = pd.read_csv(r'..\data\traditional_genre.csv').sort_values(by='core_id')
+target2Drop = range(5)
+genre = genre.drop(genre.columns[target2Drop], axis=1).as_matrix()
+print('genre shape: ', genre.shape)
+
+
 #--Compute pairwise distance
 dist_triplet_lg = pdist(emb_triplet, 'cosine')
 dist_review_lg = pdist(emb_review, 'cosine')
+dist_genre_lg = pdist(genre, 'cosine')
 
 dist_triplet = squareform(dist_triplet_lg)
 dist_review = squareform(dist_review_lg)
+dist_genre = squareform(dist_genre_lg)
 
 
-#--Triplet and review correlation
+#--Correlations
 np.corrcoef(dist_triplet_lg, dist_review_lg)
+np.corrcoef(dist_triplet_lg, dist_genre_lg)
+np.corrcoef(dist_review_lg, dist_genre_lg)
 
 #Graphing
 scatter([dist_triplet_lg, dist_review_lg], ['dist_triplet', 'dist_review'])
@@ -128,7 +140,7 @@ def implementation_c(nRef, ifRand=False, graph=False):
     nRef, mode = (nRef, '0')
 
     #Prediction
-    predictions_c = recLoo(recFunc=cRec, dist=dist_triplet, nRef=nRef, mode=mode, ifRand=ifRand)
+    predictions_c = recLoo(recFunc=cRec, dist=dist_genre, nRef=nRef, mode=mode, ifRand=ifRand)
 
     #Evaluation
     mse_c, cor_c = evalModel(predictions_c, prefs, nMN, title='CRec mode {} (reference = {})'.format(mode, nRef), graph=graph)
@@ -140,4 +152,4 @@ def implementation_c(nRef, ifRand=False, graph=False):
 predictions_c, _ = implementation_c(5, graph=False)
 
 #Implement with different numbers of reference
-multiImplement(np.arange(1, 13), implementation_c, nRand=0, titleLabel='Content-based')
+multiImplement(np.arange(1, 13), implementation_c, nRand=30, titleLabel='Content-based')

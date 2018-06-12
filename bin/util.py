@@ -53,7 +53,10 @@ def deMean(matrix_in):
     #Compute row and column effects
     nMean = np.nanmean(matrix_out, axis=0) - np.mean(np.nanmean(matrix_out, axis=0))
     mMean = np.nanmean(matrix_out, axis=1) - np.mean(np.nanmean(matrix_out, axis=1))
-    
+
+    #Deal with empty column (all nan)
+    nMean[np.where(np.isnan(nMean))] = np.nanmean(matrix_in)
+
     #Compute new matrix removed the effects
     matrix_out -= (np.reshape(nMean, (1, len(nMean))) + np.reshape(mMean, (len(mMean), 1)))
 

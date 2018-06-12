@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.stats import t as dis_t
 import matplotlib.pyplot as plt
+import seaborn as sns
 from util import *
 import warnings
 
@@ -47,12 +48,15 @@ def gen_ini_w(m_w, n_w):
 
 #Prepare pref_train for a particular target cell as rating reference
 #Prepare a mask masking target self and all nan cells
-def gen_pref8mask(m, n):
+def gen_pref8mask(m, n, _colMask):
 
     #Pref
     #Mask the pref_nan to acquire training (reference) data
     pref_train = pref_nan.copy()
     pref_train[m, n] = np.nan
+    
+    #Mask the entire column (simulate a new product which has no rating)
+    if _colMask: pref_train[:, n] = np.nan
 
     #Impute nan with total mean and adjust by column and row effects
     pref_train = imputation(pref_train)
@@ -61,6 +65,9 @@ def gen_pref8mask(m, n):
     #Remove self from the matrix 
     isnan_inv_mn = isnan_inv.copy()
     isnan_inv_mn[m, n] = False
+
+    #Remove the entire column from the matrix
+    if _colMask: isnan_inv_mn[:, n] = False
 
     return (pref_train, isnan_inv_mn)
 
@@ -103,7 +110,7 @@ def gen_iniData(m_dists, n_dists, _cf):
     return (m_dists, n_dists, len(m_dists) + _cf, len(n_dists))
 
 #Compile input dataset
-def gen_npDataset(m_dists, n_dists, _cf, pref_true):
+def gen_npDataset(m_dists, n_dists, _cf, pref_true, _colMask):
 
     #Empty containers
     pref_trains, masks, m_sims, n_sims, truths, ms, ns = ([] for i in range(7))
@@ -113,7 +120,7 @@ def gen_npDataset(m_dists, n_dists, _cf, pref_true):
         for n in gameRatedByRater[m]:
 
             #Prepare all required inputs
-            pref_train, mask = gen_pref8mask(m, n)
+            pref_train, mask = gen_pref8mask(m, n, _colMask)
             m_sim, n_sim = gen_dist2sim(m_dists, n_dists, _cf, pref_train)
             truth = pref_true[m, n]
 
@@ -142,7 +149,7 @@ def gen_npDataset(m_dists, n_dists, _cf, pref_true):
 
 
 #--Learn weight (average similarity)
-def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_rate, title, graph=False):
+def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_rate, title, _colMask=False, graph=False):
 
     #--Log
     title += '({})'.format(nRef)
@@ -153,7 +160,7 @@ def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_r
     #--Initialization
     #Prepare raw data
     m_dists_processed, n_dists_processed, nMDist, nNDist = gen_iniData(m_dists, n_dists, _cf)
-    dataset_np, nExample = gen_npDataset(m_dists_processed, n_dists_processed, _cf, deMean(pref_nan)[0])
+    dataset_np, nExample = gen_npDataset(m_dists_processed, n_dists_processed, _cf, deMean(pref_nan)[0], _colMask)
 
     #Reset graph
     tf.reset_default_graph()
@@ -163,9 +170,8 @@ def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_r
     m_w = tf.Variable(np.ones([nMDist, 1, 1]), name='m_w', dtype=tf.float32)
     n_w = tf.Variable(np.ones([nNDist, 1, 1]), name='n_w', dtype=tf.float32)
     b0 = tf.Variable(0.0, name='b0', dtype=tf.float32)
-    b1 = tf.Variable(1.0, name='b1', dtype=tf.float32)
 
-
+   
     #--Input
     #Input placeholders
     pref_train_ds = tf.placeholder(tf.float32, [nExample, nM, nN], name='pref_train')
@@ -200,9 +206,9 @@ def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_r
 
     #Prediction
     if nRef == -1:
-        pred = b0 + b1 * (tf.reduce_sum(pref_train_mask * mn_sim_mask) / tf.reduce_sum(mn_sim_mask))
+        pred = b0 + (tf.reduce_sum(pref_train_mask * mn_sim_mask) / tf.reduce_sum(mn_sim_mask))
     else:
-        pred = b0 + b1 * (tf.reduce_sum(tf.gather(pref_train_mask * mn_sim_mask, refIdx)) / tf.reduce_sum(tf.gather(mn_sim_mask, refIdx)))
+        pred = b0 + (tf.reduce_sum(tf.gather(pref_train_mask * mn_sim_mask, refIdx)) / tf.reduce_sum(tf.gather(mn_sim_mask, refIdx)))
     
     #Cost (SE)
     cost = (pred - pref_true) ** 2
@@ -266,7 +272,7 @@ def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_r
             plt.close()
 
         #Output
-        output = sess.run({'m_w': m_w, 'n_w': n_w, 'b': [b0, b1]})
+        output = sess.run({'m_w': m_w, 'n_w': n_w, 'b': [b0]})
         print('m weight:', list(output['m_w'].flatten()))
         print('n weight:', list(output['n_w'].flatten()))
         print('b:', list(output['b']))
@@ -280,14 +286,15 @@ def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_r
         output['n_dists'] = n_dists
         output['nRef'] = nRef
         output['title'] = title
+        output['_colMask'] = _colMask
 
         return output
 
 
 #--Train model
-#u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review
-output_1 = gen_learnWeight(m_dists=[u_dist_person, u_dist_sat], n_dists=[], _cf=True, nRef=-1, global_step=0, nEpoch=100, learning_rate=0.01, title='CF+person+satisfaction')
-output_2 = gen_learnWeight(m_dists=[u_dist_person, u_dist_sat], n_dists=[], _cf=True, nRef=20, global_step=0, nEpoch=100, learning_rate=0.01, title='CF+person+satisfaction')
+#u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
+output_1 = gen_learnWeight(m_dists=[], n_dists=[dist_genre], _cf=True, _colMask=True, nRef=-1, global_step=0, nEpoch=100, learning_rate=0.01, title='colMask CF+genre')
+output_2 = gen_learnWeight(m_dists=[], n_dists=[dist_review], _cf=True, _colMask=True, nRef=-1, global_step=0, nEpoch=100, learning_rate=0.01, title='colMask CF+review')
 
 
 
@@ -297,10 +304,12 @@ output_2 = gen_learnWeight(m_dists=[u_dist_person, u_dist_sat], n_dists=[], _cf=
 Model
 
 - Read in the data and functions in 1. and 2. by hand.
+- Note the default similarity is np.eyes not np.ones.
+  Therefore, different from setting an arbitrary sim matrix and weight 0.
 ------------------------------------------------------------
 '''
 #--Average similarity
-def gen_model(nRef, m_dists, n_dists, m_w, n_w, b, title, graph=False):
+def gen_model(nRef, m_dists, n_dists, m_w, n_w, b, title, _colMask=False, graph=False):
     
     #Initialize
     _cf = len(m_dists) < len(m_w) #Marker, if include cf in model
@@ -319,7 +328,9 @@ def gen_model(nRef, m_dists, n_dists, m_w, n_w, b, title, graph=False):
             
             #Prepare the reference ratings
             #Prepare the mask remove self and nan from the matrix 
-            pref_train, mask = gen_pref8mask(m, n)
+            pref_train, mask = gen_pref8mask(m, n, _colMask=_colMask)
+
+            if DEBUG: print(pref_train)
 
             #Compute CF, transform distance to similarity
             m_sim, n_sim = gen_dist2sim(m_dists, n_dists, _cf, pref_train)
@@ -342,7 +353,7 @@ def gen_model(nRef, m_dists, n_dists, m_w, n_w, b, title, graph=False):
             refIdx = np.argsort(-mn_sim[mask])[:nRef]
 
             #Flatten, nan removed, and make prediction based on the combined similarity
-            predictions_nan[m, n] = b[0] + b[1] * (np.sum((pref_train[mask] * mn_sim[mask])[refIdx]) / np.sum(mn_sim[mask][refIdx]))
+            predictions_nan[m, n] = b[0] + (np.sum((pref_train[mask] * mn_sim[mask])[refIdx]) / np.sum(mn_sim[mask][refIdx]))
 
             if DEBUG: print('ref_rating', pref_train[mask][refIdx])
             if DEBUG: print('ref_sim', mn_sim[mask][refIdx])
@@ -361,8 +372,9 @@ def gen_model(nRef, m_dists, n_dists, m_w, n_w, b, title, graph=False):
 
 DEBUG = False
 #Use nRef = -1 to employ all cells other than self
-#u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review
-predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_w=[3.6908505], n_w=[14.863923], b=[-0.29466018, 1.044427], title='General model (b0+b1R)', graph=True)
+#u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
+predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_w=[3.6908505], n_w=[14.863923], b=[-0.29466018], title='General model (b0+b1R)', graph=True)
+predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_w=[1], n_w=[1], b=[0], title='CF+review', _colMask=True, graph=False)
 
 #Pipeline input
 predictions_gen, cor_gen = gen_model(**output_1)

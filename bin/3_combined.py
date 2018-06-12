@@ -32,9 +32,9 @@ def ensembleWeight_ap(predictionStack, prefs, nEpoch=2000, graph=False):
         for epoch in range(nEpoch):
             _, epoch_cost = sess.run([optimizer, cost])
 
-            if epoch % 100 == 0:
+            if epoch % 10000 == 0:
                 print ('Cost after epoch %i: %f' % (epoch, epoch_cost))
-            if epoch % 5 == 0:
+            if epoch % 100 == 0:
                 costs.append(epoch_cost)
 
         if graph:
@@ -72,20 +72,20 @@ def ensemble_ap(predictions, nEpoch=2000, graph=False):
     predictions_en = np.sum(w_trained * predictionStack, axis=0)
 
     #Evaluation
-    mse_en, cor_en = evalModel(predictions_en, prefs, nMN, text_title='Ensemble (average prediction)\nweight = {}'.format(w_formatted), graph=graph)
+    mse_en, cor_en = evalModel(predictions_en, prefs, nMN, title='Ensemble (average prediction)\nweight = {}'.format(w_formatted), graph=graph)
 
     #Return the predicted value
     return predictions_en, cor_en, w_formatted
 
 #Implement
-predictions_en, _, __ = ensemble_ap([implementation_cf(45)[0], implementation_person(45)[0], implementation_c(1)[0]], nEpoch=20000, graph=True)
+predictions_en, _, __ = ensemble_ap([implementation_cf(45)[0], implementation_person(45)[0], implementation_c(6)[0]], nEpoch=20000, graph=True)
 
 
 #--Implement with different numbers of reference
 cors_cf, cors_person, cors_en1, cors_en2 = ([] for i in range(4))
 w_cf, w_person, w_text = ([[], []] for i in range(3))
 
-predictions_text, _ = implementation_c(1) #Text
+predictions_text, _ = implementation_c(6) #Text
 N_REF = np.arange(1, 81)
 for i in N_REF:
     predictions_cf, cor_cf = implementation_cf(i) #CF
