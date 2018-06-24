@@ -5,7 +5,7 @@ import seaborn as sns
 from util import *
 import warnings
 
-DEBUG = True
+DEBUG = False
 
 #Suppress warning due to tf gather
 if not DEBUG: warnings.filterwarnings("ignore")
@@ -296,8 +296,7 @@ def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_r
         return output
 
 
-DEBUG = True
-#--Train model
+#--Training
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
 output_1 = gen_learnWeight(m_dists=[], n_dists=[dist_genre], _cf=True, _colMask=True, nRef=-1, global_step=0, nEpoch=10, learning_rate=0.01, title='CF+genre')
 output_2 = gen_learnWeight(m_dists=[], n_dists=[dist_review], _cf=True, _colMask=True, nRef=-1, global_step=0, nEpoch=100, learning_rate=0.01, title='CF+review')
@@ -318,7 +317,7 @@ Model
 def gen_model(nRef, m_dists, n_dists, m_a, n_a, m_b, n_b, c, title, _colMask=False, graph=False):
     
     #Initialize
-    _cf = len(m_dists) < len(m_w) #Marker, if include cf in model
+    _cf = len(m_dists) < len(m_a) #Marker, if include cf in model
     m_dists, n_dists = gen_ini_dist(m_dists, n_dists, _cf)
     m_a, n_a, m_b, n_b = gen_ini_w(m_a, n_a, m_b, n_b)
 
@@ -336,20 +335,21 @@ def gen_model(nRef, m_dists, n_dists, m_a, n_a, m_b, n_b, c, title, _colMask=Fal
             #Prepare the mask remove self and nan from the matrix 
             pref_train, mask = gen_pref8mask(m, n, _colMask=_colMask)
 
-            if DEBUG: print(pref_train)
+            if DEBUG: print('pref_train', pref_train)
+            if DEBUG: print('mask', mask)
 
             #Compute CF, transform distance to similarity
             m_sim, n_sim = gen_dist2sim(m_dists, n_dists, _cf, pref_train)
 
-            #Combine weighting and similarity (sequence of product)
-            m_sim_w = (m_b * m_sim ** m_a).prod(axis=0) + np.eye(nM)
-            n_sim_w = (n_b * n_sim ** n_a).prod(axis=0) + np.eye(nN)
+            #Combine weighting and similarity
+            m_sim_w = eval(M_SIM_W)
+            n_sim_w = eval(N_SIM_W)
 
-            if DEBUG: print('m_sim_w', m_sim)
-            if DEBUG: print('n_sim_w', n_sim)
+            if DEBUG: print('m_sim_w', m_sim_w)
+            if DEBUG: print('n_sim_w', n_sim_w)
 
-            #Combine two types of similarities (product)
-            mn_sim = np.matmul(m_sim_w[m, :].reshape((nM, 1)), n_sim_w[n, :].reshape((1, nN)))
+            #Combine two types of similarities
+            mn_sim = eval(MN_SIM)
 
             if DEBUG: print('mn_sim', mn_sim)
 
@@ -376,12 +376,34 @@ def gen_model(nRef, m_dists, n_dists, m_a, n_a, m_b, n_b, c, title, _colMask=Fal
     #Return the predicted value
     return predictions_gen, cor_gen
 
-DEBUG = False
+
+#--Model options
+EXP_1 = ('(m_sim ** m_a).prod(axis=0)',
+         '(n_sim ** n_a).prod(axis=0)',
+         'np.matmul(m_sim_w[m, :].reshape((nM, 1)), n_sim_w[n, :].reshape((1, nN)))')
+EXP_2 = ('(m_sim ** m_a).sum(axis=0)',
+         '(n_sim ** n_a).sum(axis=0)',
+         'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))')
+EXP_3 = ('(m_b * m_sim).sum(axis=0)',
+         '(n_b * n_sim).sum(axis=0)',
+         'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))')
+EXP_4 = ('(m_b * m_sim ** m_a).sum(axis=0)',
+         '(n_b * n_sim ** n_a).sum(axis=0)',
+         'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))')
+DEBUG = True
+M_SIM_W, N_SIM_W, MN_SIM = EXP_3
+
+
+#--Operations
 #Use nRef = -1 to employ all cells other than self
 #u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
 predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_a=[3.6908505], n_a=[14.863923], m_b=[3.6908505], n_b=[14.863923], c=[-0.29466018], title='General model', graph=True)
-predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='CF+review', _colMask=True, graph=False)
+predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review], m_a=[1], n_a=[1], m_b=[1], n_b=[100], c=[0], title='CF+review', _colMask=True, graph=False)
 
-#Pipeline input
+
+#--Pipeline input
 predictions_gen, cor_gen = gen_model(**output_1)
 predictions_gen, cor_gen = gen_model(**output_2)
+
+x = np.array([1, 2, 3])
+np.sum(np.broadcast_to(x, (5, 3)), np.broadcast_to(x, (5, 3)))
