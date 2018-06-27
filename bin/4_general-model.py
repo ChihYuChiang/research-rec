@@ -22,8 +22,9 @@ Component functions
 def gen_ini_dist(m_dists, n_dists, _cf):
 
     #Deal with empty
-    if len(m_dists) == 0 and _cf == False: m_dists = [np.ones((nM, nM))]
-    if len(n_dists) == 0: n_dists = [np.ones((nN, nN))]
+    #Create distance matrix, diagonal = 0, others = 2
+    if len(m_dists) == 0 and _cf == False: m_dists = [-(np.eye(nM) * 2) + 2]
+    if len(n_dists) == 0: n_dists = [-(np.eye(nN) * 2) + 2]
 
     #Transform input into proper format
     m_dists = np.stack(m_dists) if len(m_dists) > 0 else np.empty((0, 0)) #Deal with CF only
@@ -35,8 +36,8 @@ def gen_ini_dist(m_dists, n_dists, _cf):
 def gen_ini_w(m_a, n_a, m_b, n_b):
 
     #Deal with empty
-    if len(m_a) == 0: m_a = [1]; m_b = [0]
-    if len(n_a) == 0: n_a = [1]; n_n = [0]
+    if len(m_a) == 0: m_a = [1]; m_b = [1]
+    if len(n_a) == 0: n_a = [1]; n_b = [1]
 
     #Transform input into proper format
     m_a = np.array(m_a).reshape((len(m_a), 1, 1))
@@ -164,10 +165,11 @@ def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_r
 
 
     #--Variables to be learnt
-    m_w = tf.Variable(np.ones([nMDist, 1, 1]), name='m_w', dtype=tf.float32)
-    n_w = tf.Variable(np.ones([nNDist, 1, 1]), name='n_w', dtype=tf.float32)
-    b0 = tf.Variable(0.0, name='b0', dtype=tf.float32)
-    b1 = tf.Variable(1.0, name='b1', dtype=tf.float32)
+    m_a = tf.Variable(np.ones([nMDist, 1, 1]), name='m_a', dtype=tf.float32)
+    n_a = tf.Variable(np.ones([nNDist, 1, 1]), name='n_a', dtype=tf.float32)
+    m_b = tf.Variable(np.ones([nMDist, 1, 1]), name='m_b', dtype=tf.float32)
+    n_b = tf.Variable(np.ones([nNDist, 1, 1]), name='n_b', dtype=tf.float32)
+    c = tf.Variable(0.0, name='c', dtype=tf.float32)
 
 
     #--Input
@@ -192,9 +194,9 @@ def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_r
 
     #--Operations
     #Intermediate
-    m_sim_w = tf.reduce_prod(m_sim ** tf.tile(m_w, [1, nM, nM]), axis=0)
-    n_sim_w = tf.reduce_prod(n_sim ** tf.tile(n_w, [1, nN, nN]), axis=0)
-    mn_sim = tf.matmul(tf.reshape(m_sim_w[m_id, :], [nM, 1]), tf.reshape(n_sim_w[n_id, :], [1, nN]))
+    m_sim_w = eval(M_SIM_WL)
+    n_sim_w = eval(N_SIM_WL)
+    mn_sim = eval(MN_SIML)
     mn_sim_mask = tf.reshape(tf.boolean_mask(mn_sim, mask), [-1])
     pref_train_mask = tf.reshape(tf.boolean_mask(pref_train, mask), [-1])
 
@@ -204,9 +206,9 @@ def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_r
 
     #Prediction
     if nRef == -1:
-        pred = b0 + b1 * (tf.reduce_sum(pref_train_mask * mn_sim_mask) / tf.reduce_sum(mn_sim_mask))
+        pred = c + tf.reduce_sum(pref_train_mask * mn_sim_mask) / tf.reduce_sum(mn_sim_mask)
     else:
-        pred = b0 + b1 * (tf.reduce_sum(tf.gather(pref_train_mask * mn_sim_mask, refIdx)) / tf.reduce_sum(tf.gather(mn_sim_mask, refIdx)))
+        pred = c + tf.reduce_sum(tf.gather(pref_train_mask * mn_sim_mask, refIdx)) / tf.reduce_sum(tf.gather(mn_sim_mask, refIdx))
     
     #Cost (SE)
     cost = (pred - pref_true) ** 2
@@ -274,32 +276,51 @@ def gen_learnWeight(m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_r
             plt.close()
 
         #Output
-        output = sess.run({'m_w': m_w, 'n_w': n_w, 'b': [b0, b1]})
-        print('m weight:', list(output['m_w'].flatten()))
-        print('n weight:', list(output['n_w'].flatten()))
-        print('b:', list(output['b']))
+        output = sess.run({'m_a': m_a, 'n_a': n_a, 'm_b': m_b, 'n_b': n_b, 'c': [c]})
+        print('m_a:', list(output['m_a'].flatten()))
+        print('n_a:', list(output['n_a'].flatten()))
+        print('m_b:', list(output['m_b'].flatten()))
+        print('n_b:', list(output['n_b'].flatten()))
+        print('c:', list(output['c']))
 
         saver.save(sess, './../data/checkpoint/gen_weight_{}'.format(title), global_step=global_step + nEpoch)
 
         #Format for plugging into the model function
-        if len(m_dists) + _cf == 0: output['m_w'] = []
-        if len(n_dists) == 0: output['n_w'] = []
+        if len(m_dists) + _cf == 0: output['m_a'] = []; output['m_b'] = []
+        if len(n_dists) == 0: output['n_a'] = []; output['n_b'] = []
         output['m_dists'] = m_dists
         output['n_dists'] = n_dists
         output['nRef'] = nRef
         output['title'] = title
         output['_colMask'] = _colMask
 
-        if DEBUG: print(dataset_np['truths'])
-        if DEBUG: print(recordP)
+        if DEBUG: print('truths', dataset_np['truths'])
+        if DEBUG: print('predictions at {} epoch'.format(nEpoch), recordP)
 
         return output
 
 
+#--Model options
+EXP_1L = ('tf.reduce_prod(m_sim ** tf.tile(m_a, [1, nM, nM]), axis=0)',
+          'tf.reduce_prod(n_sim ** tf.tile(n_a, [1, nN, nN]), axis=0)',
+          'tf.matmul(tf.reshape(m_sim_w[m_id, :], [nM, 1]), tf.reshape(n_sim_w[n_id, :], [1, nN]))')
+EXP_2L = ('tf.reduce_sum(m_sim ** tf.tile(m_a, [1, nM, nM]), axis=0)',
+          'tf.reduce_sum(n_sim ** tf.tile(n_a, [1, nN, nN]), axis=0)',
+          'tf.tile(tf.reshape(m_sim_w[m_id, :], [nM, 1]), [1, nN]) + tf.tile(tf.reshape(n_sim_w[n_id, :], [1, nN]), [nM, 1])')
+EXP_3L = ('tf.reduce_sum(tf.tile(m_b, [1, nM, nM]) * m_sim, axis=0)',
+          'tf.reduce_sum(tf.tile(n_b, [1, nN, nN]) * n_sim, axis=0)',
+          'tf.tile(tf.reshape(m_sim_w[m_id, :], [nM, 1]), [1, nN]) + tf.tile(tf.reshape(n_sim_w[n_id, :], [1, nN]), [nM, 1])')
+EXP_4L = ('tf.reduce_sum(tf.tile(m_b, [1, nM, nM]) * m_sim ** tf.tile(m_a, [1, nM, nM]), axis=0)',
+          'tf.reduce_sum(tf.tile(n_b, [1, nN, nN]) * n_sim ** tf.tile(n_a, [1, nN, nN]), axis=0)',
+          'tf.tile(tf.reshape(m_sim_w[m_id, :], [nM, 1]), [1, nN]) + tf.tile(tf.reshape(n_sim_w[n_id, :], [1, nN]), [nM, 1])')
+DEBUG = False
+M_SIM_WL, N_SIM_WL, MN_SIML = EXP_4L
+
+
 #--Training
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
-output_1 = gen_learnWeight(m_dists=[], n_dists=[dist_genre], _cf=True, _colMask=True, nRef=-1, global_step=0, nEpoch=10, learning_rate=0.01, title='CF+genre')
-output_2 = gen_learnWeight(m_dists=[], n_dists=[dist_review], _cf=True, _colMask=True, nRef=-1, global_step=0, nEpoch=100, learning_rate=0.01, title='CF+review')
+output_1 = gen_learnWeight(m_dists=[], n_dists=[dist_genre], _cf=True, _colMask=False, nRef=-1, global_step=0, nEpoch=30, learning_rate=0.01, title='CF+genre $4')
+output_2 = gen_learnWeight(m_dists=[], n_dists=[], _cf=True, _colMask=False, nRef=-1, global_step=0, nEpoch=10, learning_rate=0.01, title='CF $4')
 
 
 
@@ -391,7 +412,7 @@ EXP_4 = ('(m_b * m_sim ** m_a).sum(axis=0)',
          '(n_b * n_sim ** n_a).sum(axis=0)',
          'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))')
 DEBUG = True
-M_SIM_W, N_SIM_W, MN_SIM = EXP_3
+M_SIM_W, N_SIM_W, MN_SIM = EXP_4
 
 
 #--Operations
@@ -404,6 +425,3 @@ predictions_gen, cor_gen = gen_model(nRef=-1, m_dists=[], n_dists=[dist_review],
 #--Pipeline input
 predictions_gen, cor_gen = gen_model(**output_1)
 predictions_gen, cor_gen = gen_model(**output_2)
-
-x = np.array([1, 2, 3])
-np.sum(np.broadcast_to(x, (5, 3)), np.broadcast_to(x, (5, 3)))
