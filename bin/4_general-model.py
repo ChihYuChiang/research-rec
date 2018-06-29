@@ -15,9 +15,9 @@ EXP_1 = {'id': 1, 'var': '^(._a)|c:',
     'np': ('(m_sim ** m_a).prod(axis=0)',
            '(n_sim ** n_a).prod(axis=0)',
            'np.matmul(m_sim_w[m, :].reshape((nM, 1)), n_sim_w[n, :].reshape((1, nN)))'),
-    'tf': ('tf.reduce_sum(m_sim ** tf.tile(m_a, [1, nM, nM]), axis=0)',
-           'tf.reduce_sum(n_sim ** tf.tile(n_a, [1, nN, nN]), axis=0)',
-           'tf.tile(tf.reshape(m_sim_w[m_id, :], [nM, 1]), [1, nN]) + tf.tile(tf.reshape(n_sim_w[n_id, :], [1, nN]), [nM, 1])')}
+    'tf': ('tf.reduce_prod(m_sim ** tf.tile(m_a, [1, nM, nM]), axis=0)',
+           'tf.reduce_prod(n_sim ** tf.tile(n_a, [1, nN, nN]), axis=0)',
+           'tf.matmul(tf.reshape(m_sim_w[m_id, :], [nM, 1]), tf.reshape(n_sim_w[n_id, :], [1, nN]))')}
 EXP_2 = {'id': 2, 'var': '^(._a)|c:',
     'np': ('(m_sim ** m_a).sum(axis=0)',
            '(n_sim ** n_a).sum(axis=0)',
