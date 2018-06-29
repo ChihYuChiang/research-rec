@@ -14,10 +14,10 @@ if not DEBUG: warnings.filterwarnings("ignore")
 EXP_1 = {'id': 1, 'var': '^(._a)|c:',
     'np': ('(m_sim ** m_a).prod(axis=0)',
            '(n_sim ** n_a).prod(axis=0)',
-           'np.matmul(m_sim_w[m, :].reshape((nM, 1)), n_sim_w[n, :].reshape((1, nN)))'),
-    'tf': ('tf.reduce_prod(m_sim ** tf.tile(m_a, [1, nM, nM]), axis=0)',
-           'tf.reduce_prod(n_sim ** tf.tile(n_a, [1, nN, nN]), axis=0)',
-           'tf.matmul(tf.reshape(m_sim_w[m_id, :], [nM, 1]), tf.reshape(n_sim_w[n_id, :], [1, nN]))')}
+           'm_sim_w[m, :].reshape((nM, 1)) @ n_sim_w[n, :].reshape((1, nN))'),
+    'tf': ('tf.reduce_prod(m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
+           'tf.reduce_prod(n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
+           'tf.reshape(m_sim_w[:, m_id, :], [batchSize, nM, 1]) @ tf.reshape(n_sim_w[:, n_id, :], [batchSize, 1, nN])')}
 EXP_2 = {'id': 2, 'var': '^(._a)|c:',
     'np': ('(m_sim ** m_a).sum(axis=0)',
            '(n_sim ** n_a).sum(axis=0)',
@@ -177,7 +177,7 @@ def gen_npDataset(m_dists, n_dists, _cf, pref_true, _colMask):
 
 
 #--Learn weight (average similarity)
-def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_rate, title, _colMask=False, graph=False):
+def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_rate, title, batchSize=1, _colMask=False, graph=False):
 
     #--Log
     title += ' (${}, {})'.format(exp['id'], nRef)
@@ -189,16 +189,18 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, global_step, learn
     #Prepare raw data
     m_dists_processed, n_dists_processed, nMDist, nNDist = gen_iniData(m_dists, n_dists, _cf)
     dataset_np, nExample = gen_npDataset(m_dists_processed, n_dists_processed, _cf, deMean(pref_nan)[0], _colMask)
+    if batchSize == -1: batchSize = nExample #An epoch as a batch
 
     #Reset graph
     tf.reset_default_graph()
 
 
     #--Variables to be learnt
-    m_a = tf.Variable(np.ones([nMDist, 1, 1]), name='m_a', dtype=tf.float32)
-    n_a = tf.Variable(np.ones([nNDist, 1, 1]), name='n_a', dtype=tf.float32)
-    m_b = tf.Variable(np.ones([nMDist, 1, 1]), name='m_b', dtype=tf.float32)
-    n_b = tf.Variable(np.ones([nNDist, 1, 1]), name='n_b', dtype=tf.float32)
+    #With an additional dimension 0 to accommodate batch
+    m_a = tf.Variable(np.ones([1, nMDist, 1, 1]), name='m_a', dtype=tf.float32)
+    n_a = tf.Variable(np.ones([1, nNDist, 1, 1]), name='n_a', dtype=tf.float32)
+    m_b = tf.Variable(np.ones([1, nMDist, 1, 1]), name='m_b', dtype=tf.float32)
+    n_b = tf.Variable(np.ones([1, nNDist, 1, 1]), name='n_b', dtype=tf.float32)
     c = tf.Variable(0.0, name='c', dtype=tf.float32)
 
 
@@ -217,7 +219,7 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, global_step, learn
         pref_train_ds, mask_ds,
         m_sim_ds, n_sim_ds, pref_true_ds, m_id_ds, n_id_ds
     ))
-    dataset = dataset.repeat(nEpoch)
+    dataset = dataset.repeat(nEpoch).apply(tf.contrib.data.batch_and_drop_remainder(batchSize))
     iterator = dataset.make_initializable_iterator()
     pref_train, mask, m_sim, n_sim, pref_true, m_id, n_id = iterator.get_next()
 
@@ -228,21 +230,21 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, global_step, learn
     m_sim_w = eval(M_SIM_W)
     n_sim_w = eval(N_SIM_W)
     mn_sim = eval(MN_SIM)
-    mn_sim_mask = tf.reshape(tf.boolean_mask(mn_sim, mask), [-1])
-    pref_train_mask = tf.reshape(tf.boolean_mask(pref_train, mask), [-1])
+    mn_sim_mask = tf.reshape(tf.boolean_mask(mn_sim, mask), [batchSize, -1])
+    pref_train_mask = tf.reshape(tf.boolean_mask(pref_train, mask), [batchSize, -1])
 
     if nRef != -1:
         _, refIdx = tf.nn.top_k(mn_sim_mask, k=nRef, sorted=True)
-        refIdx = refIdx[:nRef]
+        refIdx = refIdx[:, :nRef]
 
     #Prediction
     if nRef == -1:
-        pred = c + tf.reduce_sum(pref_train_mask * mn_sim_mask) / tf.reduce_sum(mn_sim_mask)
+        pred = c + tf.reduce_sum(pref_train_mask * mn_sim_mask, axis=1) / tf.reduce_sum(mn_sim_mask, axis=1)
     else:
-        pred = c + tf.reduce_sum(tf.gather(pref_train_mask * mn_sim_mask, refIdx)) / tf.reduce_sum(tf.gather(mn_sim_mask, refIdx))
+        pred = c + tf.reduce_sum(tf.gather(pref_train_mask * mn_sim_mask, refIdx), axis=1) / tf.reduce_sum(tf.gather(mn_sim_mask, refIdx),  axis=1)
     
     #Cost (SE)
-    cost = (pred - pref_true) ** 2
+    cost = tf.reduce_sum((pred - pref_true) ** 2)
 
 
     #--Optimizer, initializer, saver
@@ -284,15 +286,15 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, global_step, learn
             cost_epoch = 0
 
             #Loop over number of example
-            for _ in range(nExample):
+            for _ in range(nExample / batchSize):
 
                 #Run operation
-                _, cost_example, p = sess.run([opt, cost, pred])
+                _, cost_batch, p = sess.run([opt, cost, pred])
 
                 if DEBUG and ep == nEpoch - 1: recordP.append(p)
 
                 #Tally the cost
-                cost_epoch += cost_example
+                cost_epoch += cost_batch
 
             if ep % 10 == 0: #For text printing
                 print('Cost after epoch %i: %f' % (ep, cost_epoch))
