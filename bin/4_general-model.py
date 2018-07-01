@@ -17,7 +17,7 @@ EXP_1 = {'id': 1, 'var': '^(._a)|c:',
            'm_sim_w[m, :].reshape((nM, 1)) @ n_sim_w[n, :].reshape((1, nN))'),
     'tf': ('tf.reduce_prod(m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
            'tf.reduce_prod(n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
-           'tf.reshape(m_sim_w[:, m_id, :], [batchSize, nM, 1]) @ tf.reshape(n_sim_w[:, n_id, :], [batchSize, 1, nN])')}
+           'tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]) @ tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN])')}
 EXP_2 = {'id': 2, 'var': '^(._a)|c:',
     'np': ('(m_sim ** m_a).sum(axis=0)',
            '(n_sim ** n_a).sum(axis=0)',
@@ -177,7 +177,7 @@ def gen_npDataset(m_dists, n_dists, _cf, pref_true, _colMask):
 
 
 #--Learn weight (average similarity)
-def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, global_step, learning_rate, title, batchSize=1, _colMask=False, graph=False):
+def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate, batchSize, title, _colMask=False, graph=False):
 
     #--Log
     title += ' (${}, {})'.format(exp['id'], nRef)
@@ -219,13 +219,17 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, global_step, learn
         pref_train_ds, mask_ds,
         m_sim_ds, n_sim_ds, pref_true_ds, m_id_ds, n_id_ds
     ))
-    dataset = dataset.repeat(nEpoch).apply(tf.contrib.data.batch_and_drop_remainder(batchSize))
+    dataset = dataset.repeat(nEpoch)
+    dataset = dataset.shuffle(buffer_size=nExample, seed=1)
+    dataset = dataset.apply(tf.contrib.data.batch_and_drop_remainder(batchSize))
     iterator = dataset.make_initializable_iterator()
     pref_train, mask, m_sim, n_sim, pref_true, m_id, n_id = iterator.get_next()
 
 
     #--Operations
     #Intermediate
+    simIdx_m = tf.stack([np.arange(batchSize), m_id], axis=1)
+    simIdx_n = tf.stack([np.arange(batchSize), n_id], axis=1)
     M_SIM_W, N_SIM_W, MN_SIM = exp['tf']
     m_sim_w = eval(M_SIM_W)
     n_sim_w = eval(N_SIM_W)
@@ -233,15 +237,16 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, global_step, learn
     mn_sim_mask = tf.reshape(tf.boolean_mask(mn_sim, mask), [batchSize, -1])
     pref_train_mask = tf.reshape(tf.boolean_mask(pref_train, mask), [batchSize, -1])
 
-    if nRef != -1:
-        _, refIdx = tf.nn.top_k(mn_sim_mask, k=nRef, sorted=True)
-        refIdx = refIdx[:, :nRef]
-
     #Prediction
     if nRef == -1:
         pred = c + tf.reduce_sum(pref_train_mask * mn_sim_mask, axis=1) / tf.reduce_sum(mn_sim_mask, axis=1)
     else:
-        pred = c + tf.reduce_sum(tf.gather(pref_train_mask * mn_sim_mask, refIdx), axis=1) / tf.reduce_sum(tf.gather(mn_sim_mask, refIdx),  axis=1)
+        _, refIdx = tf.nn.top_k(mn_sim_mask, k=nRef, sorted=True)
+        refIdx = refIdx[:, :nRef]
+        ax = np.broadcast_to(np.arange(batchSize).reshape((batchSize, 1)), (batchSize, nRef))
+        refIdx = tf.stack([ax, refIdx], axis=2)
+        
+        pred = c + tf.reduce_sum(tf.gather_nd(pref_train_mask * mn_sim_mask, refIdx), axis=1) / tf.reduce_sum(tf.gather_nd(mn_sim_mask, refIdx),  axis=1)
     
     #Cost (SE)
     cost = tf.reduce_sum((pred - pref_true) ** 2)
@@ -250,7 +255,7 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, global_step, learn
     #--Optimizer, initializer, saver
     #Select only part of the vars to be trained
     trainVars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, exp['var'])
-    opt = tf.train.AdamOptimizer(learning_rate).minimize(cost, var_list=trainVars)
+    opt = tf.train.AdamOptimizer(lRate).minimize(cost, var_list=trainVars)
     init = tf.global_variables_initializer()
     saver = tf.train.Saver(max_to_keep=5)
 
@@ -262,8 +267,8 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, global_step, learn
     with tf.Session() as sess:
 
         #Initialize vars/restore from checkpoint
-        if global_step == 0: sess.run(init)
-        else: saver.restore(sess, './../data/checkpoint/emb-update-{}'.format(global_step))
+        if globalStep == 0: sess.run(init)
+        else: saver.restore(sess, './../data/checkpoint/emb-update-{}'.format(globalStep))
 
         #Initialize an iterator over the dataset
         #(has been repeated nEpoch times)
@@ -286,7 +291,7 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, global_step, learn
             cost_epoch = 0
 
             #Loop over number of example
-            for _ in range(nExample / batchSize):
+            for _ in range(nExample // batchSize):
 
                 #Run operation
                 _, cost_batch, p = sess.run([opt, cost, pred])
@@ -306,7 +311,7 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, global_step, learn
             plt.plot(np.squeeze(costs))
             plt.ylabel('cost')
             plt.xlabel('iterations (per batch)')
-            plt.title("Learning rate =" + str(learning_rate))
+            plt.title("Learning rate =" + str(lRate))
             plt.show()
             plt.close()
 
@@ -318,7 +323,7 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, global_step, learn
         print('n_b:', list(output['n_b'].flatten()))
         print('c:', list(output['c']))
 
-        saver.save(sess, './../data/checkpoint/gen_weight_{}'.format(title), global_step=global_step + nEpoch)
+        saver.save(sess, './../data/checkpoint/gen_weight_{}'.format(title), global_step=globalStep + nEpoch)
 
         #Format for plugging into the model function
         output['exp'] = exp
@@ -337,10 +342,10 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, global_step, learn
 DEBUG = False
 #--Training and pipeline evaluate
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
-output_1 = gen_learnWeight(exp=EXP_1, m_dists=[], n_dists=[dist_genre], _cf=True, _colMask=False, nRef=-1, global_step=0, nEpoch=30, learning_rate=0.01, title='CF+genre')
+output_1 = gen_learnWeight(exp=EXP_1, m_dists=[], n_dists=[dist_genre], _cf=True, _colMask=False, nRef=10, globalStep=0, nEpoch=100, lRate=0.5, batchSize=1024, title='CF+genre')
 predictions_1, cor_1 = gen_model(**output_1)
 
-output_2 = gen_learnWeight(exp=EXP_1, m_dists=[], n_dists=[], _cf=True, _colMask=False, nRef=-1, global_step=0, nEpoch=30, learning_rate=0.01, title='CF')
+output_2 = gen_learnWeight(exp=EXP_1, m_dists=[], n_dists=[], _cf=True, _colMask=False, nRef=-1, globalStep=0, nEpoch=30, lRate=0.01, title='CF')
 predictions_2, cor_2 = gen_model(**output_2)
 
 
