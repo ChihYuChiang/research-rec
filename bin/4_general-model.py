@@ -22,23 +22,16 @@ EXP_2 = {'id': 2, 'var': '^(._a)|c:',
     'np': ('(m_sim ** m_a).sum(axis=0)',
            '(n_sim ** n_a).sum(axis=0)',
            'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
-    'tf': ('tf.reduce_sum(m_sim ** tf.tile(m_a, [1, nM, nM]), axis=0)',
-                'tf.reduce_sum(n_sim ** tf.tile(n_a, [1, nN, nN]), axis=0)',
-                'tf.tile(tf.reshape(m_sim_w[m_id, :], [nM, 1]), [1, nN]) + tf.tile(tf.reshape(n_sim_w[n_id, :], [1, nN]), [nM, 1])')}
-EXP_3 = {'id': 3, 'var': '^(._b)|c:',
-    'np': ('(m_b * m_sim).sum(axis=0)',
-           '(n_b * n_sim).sum(axis=0)',
-           'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
-    'tf': ('tf.reduce_sum(tf.tile(m_b, [1, nM, nM]) * m_sim, axis=0)',
-           'tf.reduce_sum(tf.tile(n_b, [1, nN, nN]) * n_sim, axis=0)',
-           'tf.tile(tf.reshape(m_sim_w[m_id, :], [nM, 1]), [1, nN]) + tf.tile(tf.reshape(n_sim_w[n_id, :], [1, nN]), [nM, 1])')}
-EXP_4 = {'id': 4, 'var': '^(._a|b)|c:',
+    'tf': ('tf.reduce_sum(m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
+           'tf.reduce_sum(n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
+           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')}
+EXP_3 = {'id': 3, 'var': '^(._a)|(._b)|c:',
     'np': ('(m_b * m_sim ** m_a).sum(axis=0)',
            '(n_b * n_sim ** n_a).sum(axis=0)',
            'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
-    'tf': ('tf.reduce_sum(tf.tile(m_b, [1, nM, nM]) * m_sim ** tf.tile(m_a, [1, nM, nM]), axis=0)',
-           'tf.reduce_sum(tf.tile(n_b, [1, nN, nN]) * n_sim ** tf.tile(n_a, [1, nN, nN]), axis=0)',
-           'tf.tile(tf.reshape(m_sim_w[m_id, :], [nM, 1]), [1, nN]) + tf.tile(tf.reshape(n_sim_w[n_id, :], [1, nN]), [nM, 1])')}
+    'tf': ('tf.reduce_sum(tf.tile(m_b, [batchSize, 1, nM, nM]) * m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
+           'tf.reduce_sum(tf.tile(n_b, [batchSize, 1, nN, nN]) * n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
+           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')}
 
 
 
@@ -177,10 +170,10 @@ def gen_npDataset(m_dists, n_dists, _cf, pref_true, _colMask):
 
 
 #--Learn weight (average similarity)
-def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate, batchSize, title, _colMask=False, graph=False):
+def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate, batchSize, title, _colMask=False, _sf=False, _graph=False):
 
     #--Log
-    title += ' (${}, {})'.format(exp['id'], nRef)
+    title += ' (${}, nRef={}, lRate={}, bSize={})'.format(exp['id'], nRef, lRate, batchSize)
     print('-' * 60)
     print(title)
 
@@ -219,9 +212,9 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate,
         pref_train_ds, mask_ds,
         m_sim_ds, n_sim_ds, pref_true_ds, m_id_ds, n_id_ds
     ))
-    dataset = dataset.repeat(nEpoch)
-    dataset = dataset.shuffle(buffer_size=nExample, seed=1)
-    dataset = dataset.apply(tf.contrib.data.batch_and_drop_remainder(batchSize))
+    dataset = dataset.repeat() #Repeat indefinitely
+    if _sf: dataset = dataset.shuffle(buffer_size=nExample, seed=1)
+    dataset = dataset.batch(batchSize)
     iterator = dataset.make_initializable_iterator()
     pref_train, mask, m_sim, n_sim, pref_true, m_id, n_id = iterator.get_next()
 
@@ -291,7 +284,7 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate,
             cost_epoch = 0
 
             #Loop over number of example
-            for _ in range(nExample // batchSize):
+            for _ in range(nExample // batchSize + 1):
 
                 #Run operation
                 _, cost_batch, p = sess.run([opt, cost, pred])
@@ -301,17 +294,17 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate,
                 #Tally the cost
                 cost_epoch += cost_batch
 
-            if ep % 10 == 0: #For text printing
+            if ep % 10 == 0 or ep + 1 == nEpoch: #For text printing
                 print('Cost after epoch %i: %f' % (ep, cost_epoch))
             if ep % 1 == 0: #For graphing
                 costs.append(cost_epoch)
 
         #Graphing the change of the costs
-        if graph:
+        if _graph:
             plt.plot(np.squeeze(costs))
             plt.ylabel('cost')
-            plt.xlabel('iterations (per batch)')
-            plt.title("Learning rate =" + str(lRate))
+            plt.xlabel('iterations (per epoch)')
+            plt.title("Learning rate = {}, batch size = {}".format(lRate, batchSize))
             plt.show()
             plt.close()
 
@@ -342,10 +335,10 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate,
 DEBUG = False
 #--Training and pipeline evaluate
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
-output_1 = gen_learnWeight(exp=EXP_1, m_dists=[], n_dists=[dist_genre], _cf=True, _colMask=False, nRef=10, globalStep=0, nEpoch=100, lRate=0.5, batchSize=1024, title='CF+genre')
+output_1 = gen_learnWeight(exp=EXP_3, m_dists=[], n_dists=[dist_review], _cf=True, _colMask=False, nRef=-1, globalStep=0, nEpoch=200, lRate=0.01, batchSize=512, title='CF+review')
 predictions_1, cor_1 = gen_model(**output_1)
 
-output_2 = gen_learnWeight(exp=EXP_1, m_dists=[], n_dists=[], _cf=True, _colMask=False, nRef=-1, globalStep=0, nEpoch=30, lRate=0.01, title='CF')
+output_2 = gen_learnWeight(exp=EXP_3, m_dists=[u_dist_person], n_dists=[], _cf=True, _colMask=False, nRef=-1, globalStep=0, nEpoch=20, lRate=0.1, batchSize=512, title='CF+person')
 predictions_2, cor_2 = gen_model(**output_2)
 
 
@@ -427,9 +420,9 @@ def gen_model(exp, nRef, m_dists, n_dists, m_a, n_a, m_b, n_b, c, title, _colMas
     return predictions_gen, cor_gen
 
 
-DEBUG = True
+DEBUG = False
 #--Operations
 #Use nRef = -1 to employ all cells other than self
 #u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
-predictions_gen, cor_gen = gen_model(exp=EXP_1, nRef=-1, m_dists=[], n_dists=[dist_review], m_a=[3.6908505], n_a=[14.863923], m_b=[3.6908505], n_b=[14.863923], c=[-0.29466018], title='General model', graph=True)
-predictions_gen, cor_gen = gen_model(exp=EXP_1, nRef=-1, m_dists=[], n_dists=[dist_review], m_a=[1], n_a=[1], m_b=[1], n_b=[100], c=[0], title='CF+review', _colMask=True, graph=False)
+predictions_gen, cor_gen = gen_model(exp=EXP_1, nRef=-1, m_dists=[], n_dists=[dist_review], m_a=[3.4591951], n_a=[14.910944], m_b=[1], n_b=[1], c=[-0.58396941], title='General model 1', graph=True)
+predictions_gen, cor_gen = gen_model(exp=EXP_4, nRef=-1, m_dists=[], n_dists=[dist_genre], m_a=[1], n_a=[0], m_b=[1], n_b=[0], c=[0], title='General model 2', _colMask=False, graph=False)
