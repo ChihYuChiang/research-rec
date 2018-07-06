@@ -25,12 +25,26 @@ EXP_2 = {'id': 2, 'var': '^(._a)|c:',
     'tf': ('tf.reduce_sum(m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
            'tf.reduce_sum(n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
            'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')}
+EXP_21 = {'id': 21, 'var': '^(._a)|c:',
+    'np': ('(((m_sim >= 0) * 2 - 1) * m_sim ** m_a).sum(axis=0)',
+           '(((n_sim >= 0) * 2 - 1)n_sim ** n_a).sum(axis=0)',
+           'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
+    'tf': ('tf.reduce_sum((tf.cast(m_sim >= 0, tf.int32) * 2 - 1) * m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
+           'tf.reduce_sum((tf.cast(n_sim >= 0, tf.int32) * 2 - 1) * n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
+           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')}
 EXP_3 = {'id': 3, 'var': '^(._a)|(._b)|c:',
     'np': ('(m_b * m_sim ** m_a).sum(axis=0)',
            '(n_b * n_sim ** n_a).sum(axis=0)',
            'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
     'tf': ('tf.reduce_sum(tf.tile(m_b, [batchSize, 1, nM, nM]) * m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
            'tf.reduce_sum(tf.tile(n_b, [batchSize, 1, nN, nN]) * n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
+           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')}
+EXP_4 = {'id': 4, 'var': '^(._a)|(._b)|c:',
+    'np': ('(m_b * m_sim ** m_a).sum(axis=0) + np.eye(nM)',
+           '(n_b * n_sim ** n_a).sum(axis=0) + np.eye(nN)',
+           'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
+    'tf': ('tf.reduce_sum(tf.tile(m_b, [batchSize, 1, nM, nM]) * m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1) + eyeM_batch',
+           'tf.reduce_sum(tf.tile(n_b, [batchSize, 1, nN, nN]) * n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1) + eyeN_batch',
            'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')}
 
 
@@ -96,7 +110,7 @@ def gen_pref8mask(m, n, _colMask):
     return (pref_train, isnan_inv_mn)
 
 #Compute CF (if needed), transform distance to similarity
-def gen_dist2sim(m_dists, n_dists, _cf, pref_train):
+def gen_dist2sim(m_dists, n_dists, _cf, pref_train, _negSim):
 
     #If we are going to include CF dist
     #Each rating uses the corresponding cf similarity
@@ -109,10 +123,10 @@ def gen_dist2sim(m_dists, n_dists, _cf, pref_train):
     
     else: m_dists_processed = m_dists
 
-    #Flip distances (2 to 0) to similarities (0 to 1)
+    #Flip distances (2 to 0) to similarities (0 to 1 or -1 to 1)
     #https://docs.scipy.org/doc/scipy-0.19.1/reference/generated/generated/scipy.spatial.distance.cosine.html
-    m_sim = 1 - m_dists_processed / 2
-    n_sim = 1 - n_dists / 2
+    m_sim = 1 - m_dists_processed / 2 ** (not _negSim)
+    n_sim = 1 - n_dists / 2 ** (not _negSim)
 
     return (m_sim, n_sim)
 
@@ -131,7 +145,7 @@ def gen_iniData(m_dists, n_dists, _cf):
     return (m_dists, n_dists, len(m_dists) + _cf, len(n_dists))
 
 #Compile input dataset
-def gen_npDataset(m_dists, n_dists, _cf, pref_true, _colMask):
+def gen_npDataset(m_dists, n_dists, _cf, pref_true, _negSim, _colMask):
 
     #Empty containers
     pref_trains, masks, m_sims, n_sims, truths, ms, ns = ([] for i in range(7))
@@ -142,7 +156,7 @@ def gen_npDataset(m_dists, n_dists, _cf, pref_true, _colMask):
 
             #Prepare all required inputs
             pref_train, mask = gen_pref8mask(m, n, _colMask)
-            m_sim, n_sim = gen_dist2sim(m_dists, n_dists, _cf, pref_train)
+            m_sim, n_sim = gen_dist2sim(m_dists, n_dists, _cf, pref_train, _negSim)
             truth = pref_true[m, n]
 
             pref_trains.append(pref_train)
@@ -170,7 +184,7 @@ def gen_npDataset(m_dists, n_dists, _cf, pref_true, _colMask):
 
 
 #--Learn weight (average similarity)
-def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate, batchSize, title, _colMask=False, _sf=False, _graph=False):
+def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate, batchSize, title, _negSim=False, _colMask=False, _shuffle=False, _graph=False):
 
     #--Log
     title += ' (${}, nRef={}, lRate={}, bSize={})'.format(exp['id'], nRef, lRate, batchSize)
@@ -181,8 +195,10 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate,
     #--Initialization
     #Prepare raw data
     m_dists_processed, n_dists_processed, nMDist, nNDist = gen_iniData(m_dists, n_dists, _cf)
-    dataset_np, nExample = gen_npDataset(m_dists_processed, n_dists_processed, _cf, deMean(pref_nan)[0], _colMask)
+    dataset_np, nExample = gen_npDataset(m_dists_processed, n_dists_processed, _cf, deMean(pref_nan)[0], _negSim, _colMask)
     if batchSize == -1: batchSize = nExample #An epoch as a batch
+    eyeM_batch = np.broadcast_to(np.eye(nM).reshape(1, nM, nM), (batchSize, nM, nM))
+    eyeN_batch = np.broadcast_to(np.eye(nN).reshape(1, nN, nN), (batchSize, nN, nN))
 
     #Reset graph
     tf.reset_default_graph()
@@ -213,7 +229,7 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate,
         m_sim_ds, n_sim_ds, pref_true_ds, m_id_ds, n_id_ds
     ))
     dataset = dataset.repeat() #Repeat indefinitely
-    if _sf: dataset = dataset.shuffle(buffer_size=nExample, seed=1)
+    if _shuffle: dataset = dataset.shuffle(buffer_size=nExample, seed=1)
     dataset = dataset.batch(batchSize)
     iterator = dataset.make_initializable_iterator()
     pref_train, mask, m_sim, n_sim, pref_true, m_id, n_id = iterator.get_next()
@@ -325,6 +341,7 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate,
         output['nRef'] = nRef
         output['title'] = title
         output['_colMask'] = _colMask
+        output['_negSim'] = _negSim
 
         if DEBUG: print('truths', dataset_np['truths'])
         if DEBUG: print('predictions at {} epoch'.format(nEpoch), recordP)
@@ -335,10 +352,10 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate,
 DEBUG = False
 #--Training and pipeline evaluate
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
-output_1 = gen_learnWeight(exp=EXP_3, m_dists=[], n_dists=[dist_review], _cf=True, _colMask=False, nRef=-1, globalStep=0, nEpoch=200, lRate=0.01, batchSize=512, title='CF+review')
+output_1 = gen_learnWeight(exp=EXP_21, m_dists=[], n_dists=[dist_review], _cf=True, _negSim=True, nRef=-1, globalStep=0, nEpoch=100, lRate=0.5, batchSize=-1, title='CF+review')
 predictions_1, cor_1 = gen_model(**output_1)
 
-output_2 = gen_learnWeight(exp=EXP_3, m_dists=[u_dist_person], n_dists=[], _cf=True, _colMask=False, nRef=-1, globalStep=0, nEpoch=20, lRate=0.1, batchSize=512, title='CF+person')
+output_2 = gen_learnWeight(exp=EXP_3, m_dists=[], n_dists=[dist_review], _cf=True, _negSim=False, nRef=-1, globalStep=0, nEpoch=20, lRate=0.5, batchSize=-1, title='CF+review')
 predictions_2, cor_2 = gen_model(**output_2)
 
 
@@ -354,7 +371,7 @@ Model
 ------------------------------------------------------------
 '''
 #--Average similarity
-def gen_model(exp, nRef, m_dists, n_dists, m_a, n_a, m_b, n_b, c, title, _colMask=False, graph=False):
+def gen_model(exp, nRef, m_dists, n_dists, m_a, n_a, m_b, n_b, c, title, _negSim=False, _colMask=False, graph=False):
     
     #Initialize
     _cf = len(m_dists) < len(m_a) #Marker, if include cf in model
@@ -379,7 +396,7 @@ def gen_model(exp, nRef, m_dists, n_dists, m_a, n_a, m_b, n_b, c, title, _colMas
             if DEBUG: print('mask', mask)
 
             #Compute CF, transform distance to similarity
-            m_sim, n_sim = gen_dist2sim(m_dists, n_dists, _cf, pref_train)
+            m_sim, n_sim = gen_dist2sim(m_dists, n_dists, _cf, pref_train, _negSim)
 
             #Unpack model expression
             M_SIM_W, N_SIM_W, MN_SIM = exp['np']

@@ -9,6 +9,7 @@ m_a = np.array([[[[1]], [[2]]]])
 print(x)
 x.shape
 m_a.shape
+tf.cast(x > 1, np.int32) * 2 - 1
 
 m = tf.reduce_sum(x ** tf.tile(m_a, [1, 2, 3]), axis=0)
 tf.tile(tf.reshape([1, 2, 3], [3, 1]), [1, 5])
