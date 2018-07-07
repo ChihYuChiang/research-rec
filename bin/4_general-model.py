@@ -26,11 +26,11 @@ EXP_2 = {'id': 2, 'var': '^(._a)|c:',
            'tf.reduce_sum(n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
            'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')}
 EXP_21 = {'id': 21, 'var': '^(._a)|c:',
-    'np': ('(((m_sim >= 0) * 2 - 1) * m_sim ** m_a).sum(axis=0)',
-           '(((n_sim >= 0) * 2 - 1)n_sim ** n_a).sum(axis=0)',
+    'np': ('(((m_sim >= 0) * 2 - 1) * np.absolute(m_sim) ** m_a).sum(axis=0)',
+           '(((n_sim >= 0) * 2 - 1) * np.absolute(n_sim) ** n_a).sum(axis=0)',
            'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
-    'tf': ('tf.reduce_sum((tf.cast(m_sim >= 0, tf.int32) * 2 - 1) * m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
-           'tf.reduce_sum((tf.cast(n_sim >= 0, tf.int32) * 2 - 1) * n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
+    'tf': ('tf.reduce_sum((tf.cast(m_sim >= 0, tf.float32) * 2 - 1) * tf.abs(m_sim) ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
+           'tf.reduce_sum((tf.cast(n_sim >= 0, tf.float32) * 2 - 1) * tf.abs(n_sim) ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
            'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')}
 EXP_3 = {'id': 3, 'var': '^(._a)|(._b)|c:',
     'np': ('(m_b * m_sim ** m_a).sum(axis=0)',
@@ -39,12 +39,26 @@ EXP_3 = {'id': 3, 'var': '^(._a)|(._b)|c:',
     'tf': ('tf.reduce_sum(tf.tile(m_b, [batchSize, 1, nM, nM]) * m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
            'tf.reduce_sum(tf.tile(n_b, [batchSize, 1, nN, nN]) * n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
            'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')}
+EXP_31 = {'id': 31, 'var': '^(._a)|(._b)|c:',
+    'np': ('(((m_sim >= 0) * 2 - 1) * m_b * np.absolute(m_sim) ** m_a).sum(axis=0)',
+           '(((n_sim >= 0) * 2 - 1) * n_b * np.absolute(n_sim) ** n_a).sum(axis=0)',
+           'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
+    'tf': ('tf.reduce_sum((tf.cast(m_sim >= 0, tf.float32) * 2 - 1) * tf.tile(m_b, [batchSize, 1, nM, nM]) * tf.abs(m_sim) ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
+           'tf.reduce_sum((tf.cast(n_sim >= 0, tf.float32) * 2 - 1) * tf.tile(n_b, [batchSize, 1, nN, nN]) * tf.abs(n_sim) ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
+           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')}
 EXP_4 = {'id': 4, 'var': '^(._a)|(._b)|c:',
     'np': ('(m_b * m_sim ** m_a).sum(axis=0) + np.eye(nM)',
            '(n_b * n_sim ** n_a).sum(axis=0) + np.eye(nN)',
            'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
     'tf': ('tf.reduce_sum(tf.tile(m_b, [batchSize, 1, nM, nM]) * m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1) + eyeM_batch',
            'tf.reduce_sum(tf.tile(n_b, [batchSize, 1, nN, nN]) * n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1) + eyeN_batch',
+           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')}
+EXP_41 = {'id': 41, 'var': '^(._a)|(._b)|c:',
+    'np': ('(((m_sim >= 0) * 2 - 1) * m_b * np.absolute(m_sim) ** m_a).sum(axis=0) + np.eye(nM)',
+           '(((n_sim >= 0) * 2 - 1) * n_b * np.absolute(n_sim) ** n_a).sum(axis=0) + np.eye(nN)',
+           'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
+    'tf': ('tf.reduce_sum((tf.cast(m_sim >= 0, tf.float32) * 2 - 1) * tf.tile(m_b, [batchSize, 1, nM, nM]) * tf.abs(m_sim) ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1) + eyeM_batch',
+           'tf.reduce_sum((tf.cast(n_sim >= 0, tf.float32) * 2 - 1) * tf.tile(n_b, [batchSize, 1, nN, nN]) * tf.abs(n_sim) ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1) + eyeN_batch',
            'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')}
 
 
@@ -352,10 +366,10 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate,
 DEBUG = False
 #--Training and pipeline evaluate
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
-output_1 = gen_learnWeight(exp=EXP_21, m_dists=[], n_dists=[dist_review], _cf=True, _negSim=True, nRef=-1, globalStep=0, nEpoch=100, lRate=0.5, batchSize=-1, title='CF+review')
+output_1 = gen_learnWeight(exp=EXP_41, m_dists=[], n_dists=[dist_review], _cf=True, _negSim=True, nRef=20, globalStep=0, nEpoch=100, lRate=0.5, batchSize=-1, title='CF+review')
 predictions_1, cor_1 = gen_model(**output_1)
 
-output_2 = gen_learnWeight(exp=EXP_3, m_dists=[], n_dists=[dist_review], _cf=True, _negSim=False, nRef=-1, globalStep=0, nEpoch=20, lRate=0.5, batchSize=-1, title='CF+review')
+output_2 = gen_learnWeight(exp=EXP_4, m_dists=[], n_dists=[dist_review], _cf=True, _negSim=False, nRef=20, globalStep=0, nEpoch=100, lRate=0.5, batchSize=-1, title='CF+review')
 predictions_2, cor_2 = gen_model(**output_2)
 
 
