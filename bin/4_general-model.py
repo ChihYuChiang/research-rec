@@ -445,7 +445,7 @@ def gen_model(exp, nRef, m_dists, n_dists, m_a, n_a, m_b, n_b, c, title, _negSim
     predictions_gen = predictions_nan[isnan_inv]
 
     #Evaluation
-    mse_gen, cor_gen = evalModel(predictions_gen, prefs, nMN, title=title, graph=graph)
+    mse_gen, cor_gen, rho_gen = evalModel(predictions_gen, prefs, nMN, title=title, graph=graph)
 
     #Return the predicted value
     return predictions_gen, cor_gen

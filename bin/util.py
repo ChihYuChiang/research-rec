@@ -1,4 +1,5 @@
 import numpy as np
+import scipy as sp
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -68,16 +69,18 @@ def evalModel(predictions, truth, nMN, title, graph):
 
     #Description
     mse = np.sum(np.square(predictions - truth) / nMN)
-    cor = np.corrcoef(predictions, truth)
+    cor = np.corrcoef(predictions, truth)[0, 1]
+    rho, _ = sp.stats.spearmanr(predictions, truth)
     print('-' * 60)
     print(title)
     print('MSE =', mse)
-    print('Correlation =', cor[0, 1])
+    print('Correlation =', cor)
+    print('RankCorrelation =', rho)
 
     #Graphing
     if graph: scatter([truth, predictions], ['truth', 'predictions'])
 
-    return mse, cor[0, 1]
+    return mse, cor, rho
 
 
 

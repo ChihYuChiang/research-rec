@@ -143,7 +143,7 @@ def implementation_c(nRef, ifRand=False, graph=False):
     predictions_c = recLoo(recFunc=cRec, dist=dist_genre, nRef=nRef, mode=mode, ifRand=ifRand)
 
     #Evaluation
-    mse_c, cor_c = evalModel(predictions_c, prefs, nMN, title='CRec mode {} (reference = {})'.format(mode, nRef), graph=graph)
+    mse_c, cor_c, rho_c = evalModel(predictions_c, prefs, nMN, title='CRec mode {} (reference = {})'.format(mode, nRef), graph=graph)
 
     #Return the predicted value
     return predictions_c, cor_c

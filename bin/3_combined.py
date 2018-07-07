@@ -72,7 +72,7 @@ def ensemble_ap(predictions, nEpoch=2000, graph=False):
     predictions_en = np.sum(w_trained * predictionStack, axis=0)
 
     #Evaluation
-    mse_en, cor_en = evalModel(predictions_en, prefs, nMN, title='Ensemble (average prediction)\nweight = {}'.format(w_formatted), graph=graph)
+    mse_en, cor_en, rho_en = evalModel(predictions_en, prefs, nMN, title='Ensemble (average prediction)\nweight = {}'.format(w_formatted), graph=graph)
 
     #Return the predicted value
     return predictions_en, cor_en, w_formatted

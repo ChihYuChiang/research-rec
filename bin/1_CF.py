@@ -181,7 +181,7 @@ def implementation(nRef, recFunc, dist, mode, title, ifRand=False, graph=False):
     title = title.format(mode, nRef)
 
     #Evaluation
-    mse, cor = evalModel(predictions, prefs, nMN, title, graph=graph)
+    mse, cor, rho = evalModel(predictions, prefs, nMN, title, graph=graph)
 
     #Return the predicted value
     return predictions, cor
