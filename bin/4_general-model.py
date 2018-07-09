@@ -10,7 +10,56 @@ DEBUG = False
 #Suppress warning due to tf gather
 if not DEBUG: warnings.filterwarnings("ignore")
 
-#Model expression
+
+
+
+'''
+------------------------------------------------------------
+Preference data
+------------------------------------------------------------
+'''
+#--Preprocessing pref data
+pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
+
+
+#--Acquire k-fold ids
+K_FOLD = 2
+id_train, id_test = kFold(K_FOLD, nMN, seed=1)
+
+
+#--Updating data as training and test sets
+def preprocessing_kFold(foldId, _marker):
+    
+    global pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
+
+    #Reset data
+    pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
+
+    #Test set blanks training set ids
+    if _marker == 'test':
+        nanCell = [np.take(naniloc_inv[0], id_train[foldId]), np.take(naniloc_inv[1], id_train[foldId])]
+        pref_nan[nanCell] = np.nan
+
+    #Training set blanks test set ids
+    if _marker == 'training':
+        nanCell = [np.take(naniloc_inv[0], id_test[foldId]), np.take(naniloc_inv[1], id_test[foldId])]
+        pref_nan[nanCell] = np.nan
+
+    #Update global vars
+    prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan)
+
+    print('Now using fold #{}/{}, set {}.'.format(foldId, K_FOLD, _marker))
+
+preprocessing_kFold(1, 'test')
+
+
+
+
+'''
+------------------------------------------------------------
+Model expression
+------------------------------------------------------------
+'''
 EXP_1 = {'id': 1, 'var': '^(._a)|c:',
     'np': ('(m_sim ** m_a).prod(axis=0)',
            '(n_sim ** n_a).prod(axis=0)',

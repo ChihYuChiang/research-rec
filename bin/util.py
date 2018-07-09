@@ -101,10 +101,10 @@ def kFold(k, nMN, seed=1):
     anchor = np.arange(k) * (nMN // k + ind)
     
     #Acquire the training and testing set ids
-    test = [rMN[anchor[i]:(anchor[i + 1] if i + 1 != len(anchor) else None)] for i in range(len(anchor))]
-    train = [np.setdiff1d(rMN, test[i]) for i in range(len(test))]
+    id_test = [rMN[anchor[i]:(anchor[i + 1] if i + 1 != len(anchor) else None)] for i in range(len(anchor))]
+    id_train = [np.setdiff1d(rMN, id_test[i]) for i in range(len(id_test))]
 
-    return train, test
+    return id_train, id_test
     
 
 
@@ -115,7 +115,7 @@ Common functions
 ------------------------------------------------------------
 '''
 #--Preprocess data
-#Return processed matrix, matrix shape, reversed nan index
+#Raw data + preprocessing wrapper
 def preprocessing(description):
 
     #Load data
@@ -125,6 +125,20 @@ def preprocessing(description):
     #Combine sub-measurements to acquire final matrix
     #Get specific rating: pref_nan[rater, game]
     pref_nan = (pref_raw[:, np.arange(0, nN_raw, 3)] + pref_raw[:, np.arange(1, nN_raw, 3)] + pref_raw[:, np.arange(2, nN_raw, 3)]) / 3
+
+    #Preprocessing
+    prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan)
+
+    #Data description
+    if description:
+        print('Number of raters per game:\n', np.sum(isnan_inv, axis=0))
+        print('Number of games rated per rater:\n', np.sum(isnan_inv, axis=1))
+        print('Total number of ratings:\n', nMN)
+
+    return pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
+
+#Return processed matrix, matrix shape, reversed nan index
+def preprocessing_core(pref_nan):
 
     #Get final data shape
     nM, nN = pref_nan.shape
@@ -142,21 +156,7 @@ def preprocessing(description):
     #Subtract column and row effects for pref matrix and makes it long-form
     prefs = deMean(pref_nan)[0][isnan_inv]
 
-    #Data description
-    if description:
-        print('Number of raters per game:\n', np.sum(isnan_inv, axis=0))
-        print('Number of games rated per rater:\n', np.sum(isnan_inv, axis=1))
-        print('Total number of ratings:\n', nMN)
-
-    return pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
-
-
-#--
-isnan_inv = np.logical_not(np.isnan(pref_nan))
-naniloc_inv = np.where(isnan_inv)
-
-[np.take(naniloc_inv[0], t), np.take(naniloc_inv[1], t)]
-pref_nan
+    return prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
 
 
 #--Leave-one-out implementation
