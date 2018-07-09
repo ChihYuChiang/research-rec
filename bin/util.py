@@ -83,6 +83,30 @@ def evalModel(predictions, truth, nMN, title, graph):
     return mse, cor, rho
 
 
+#--Acquire ids of a k-fold training testing set
+def kFold(k, nMN, seed=1):
+
+    #Reset the seed
+    np.random.seed(seed=seed)
+
+    #The indice to be selected
+    rMN = np.arange(nMN)
+    np.random.shuffle(rMN)
+
+    #Indicator
+    #To make sure the distribution is as evenly as possible
+    ind = abs(nMN - (nMN // k + 1) * (k - 1) - (nMN // k + 1)) < abs(nMN - (nMN // k) * (k - 1) - (nMN // k))
+
+    #Series id based on k
+    anchor = np.arange(k) * (nMN // k + ind)
+    
+    #Acquire the training and testing set ids
+    test = [rMN[anchor[i]:(anchor[i + 1] if i + 1 != len(anchor) else None)] for i in range(len(anchor))]
+    train = [np.setdiff1d(rMN, test[i]) for i in range(len(test))]
+
+    return train, test
+    
+
 
 
 '''
@@ -125,6 +149,14 @@ def preprocessing(description):
         print('Total number of ratings:\n', nMN)
 
     return pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
+
+
+#--
+isnan_inv = np.logical_not(np.isnan(pref_nan))
+naniloc_inv = np.where(isnan_inv)
+
+[np.take(naniloc_inv[0], t), np.take(naniloc_inv[1], t)]
+pref_nan
 
 
 #--Leave-one-out implementation
