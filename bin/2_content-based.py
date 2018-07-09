@@ -13,6 +13,7 @@ Preference data
 ------------------------------------------------------------
 '''
 #--Preprocessing pref data
+#Read from file, processing without folds
 pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
 
 
@@ -110,7 +111,7 @@ def cRec(pref_nan, v_dist, m, n, nRef, mode, ifRand):
     pref_train[m, n] = np.nan
 
     #Substract row and column effects from pref
-    pref_train = deMean(pref_train)[0]
+    pref_train = deMean(pref_train)
 
     #Sort, remove self, and find the best matched raters and their ratings
     reference_rating, reference_dist = reference_byItem(v_dist[n, :], pref_nan, pref_train, m, n, nRef, ifRand)
@@ -140,7 +141,7 @@ def implementation_c(nRef, ifRand=False, graph=False):
     nRef, mode = (nRef, '0')
 
     #Prediction
-    predictions_c = recLoo(recFunc=cRec, dist=dist_genre, nRef=nRef, mode=mode, ifRand=ifRand)
+    predictions_c = recLoo(recFunc=cRec, dist=dist_review, nRef=nRef, mode=mode, ifRand=ifRand)
 
     #Evaluation
     mse_c, cor_c, rho_c = evalModel(predictions_c, prefs, nMN, title='CRec mode {} (reference = {})'.format(mode, nRef), graph=graph)
@@ -149,7 +150,7 @@ def implementation_c(nRef, ifRand=False, graph=False):
     return predictions_c, cor_c
 
 #Implement
-predictions_c, _ = implementation_c(5, graph=False)
+predictions_c, _ = implementation_c(5, graph=True)
 
 #Implement with different numbers of reference
 multiImplement(np.arange(1, 13), implementation_c, nRand=30, titleLabel='Content-based')

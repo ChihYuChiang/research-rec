@@ -19,6 +19,7 @@ Preference data
 ------------------------------------------------------------
 '''
 #--Preprocessing pref data
+#Read from file, processing without folds
 pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
 
 
@@ -30,6 +31,7 @@ id_train, id_test = kFold(K_FOLD, nMN, seed=1)
 #--Updating data as training and test sets
 def preprocessing_kFold(foldId, _marker):
     
+    #Manage global directly
     global pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
 
     #Reset data
@@ -48,6 +50,7 @@ def preprocessing_kFold(foldId, _marker):
     #Update global vars
     prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan)
 
+    #Log
     print('Now using fold #{}/{}, set {}.'.format(foldId, K_FOLD, _marker))
 
 preprocessing_kFold(1, 'test')
@@ -130,7 +133,7 @@ def gen_ini_dist(m_dists, n_dists, _cf):
     m_dists = np.stack(m_dists) if len(m_dists) > 0 else np.empty((0, 0)) #Deal with CF only
     n_dists = np.stack(n_dists)
 
-    return (m_dists, n_dists)
+    return m_dists, n_dists
 
 #Initialize weight
 def gen_ini_w(m_a, n_a, m_b, n_b):
@@ -145,7 +148,7 @@ def gen_ini_w(m_a, n_a, m_b, n_b):
     m_b = np.array(m_b).reshape((len(m_b), 1, 1))
     n_b = np.array(n_b).reshape((len(n_b), 1, 1))
 
-    return (m_a, n_a, m_b, n_b)
+    return m_a, n_a, m_b, n_b
 
 #Prepare pref_train for a particular target cell as rating reference
 #Prepare a mask masking target self and all nan cells
@@ -170,7 +173,7 @@ def gen_pref8mask(m, n, _colMask):
     #Remove the entire column from the matrix
     if _colMask: isnan_inv_mn[:, n] = False
 
-    return (pref_train, isnan_inv_mn)
+    return pref_train, isnan_inv_mn
 
 #Compute CF (if needed), transform distance to similarity
 def gen_dist2sim(m_dists, n_dists, _cf, pref_train, _negSim):
@@ -191,7 +194,7 @@ def gen_dist2sim(m_dists, n_dists, _cf, pref_train, _negSim):
     m_sim = 1 - m_dists_processed / 2 ** (not _negSim)
     n_sim = 1 - n_dists / 2 ** (not _negSim)
 
-    return (m_sim, n_sim)
+    return m_sim, n_sim
 
 
 
@@ -205,7 +208,7 @@ Ensemble model weight learning
 #Initialize data
 def gen_iniData(m_dists, n_dists, _cf):
     m_dists, n_dists = gen_ini_dist(m_dists, n_dists, _cf)
-    return (m_dists, n_dists, len(m_dists) + _cf, len(n_dists))
+    return m_dists, n_dists, len(m_dists) + _cf, len(n_dists)
 
 #Compile input dataset
 def gen_npDataset(m_dists, n_dists, _cf, pref_true, _negSim, _colMask):
@@ -258,7 +261,7 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate,
     #--Initialization
     #Prepare raw data
     m_dists_processed, n_dists_processed, nMDist, nNDist = gen_iniData(m_dists, n_dists, _cf)
-    dataset_np, nExample = gen_npDataset(m_dists_processed, n_dists_processed, _cf, deMean(pref_nan)[0], _negSim, _colMask)
+    dataset_np, nExample = gen_npDataset(m_dists_processed, n_dists_processed, _cf, deMean(pref_nan), _negSim, _colMask)
     if batchSize == -1: batchSize = nExample #An epoch as a batch
     eyeM_batch = np.broadcast_to(np.eye(nM).reshape(1, nM, nM), (batchSize, nM, nM))
     eyeN_batch = np.broadcast_to(np.eye(nN).reshape(1, nN, nN), (batchSize, nN, nN))

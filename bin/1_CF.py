@@ -16,6 +16,7 @@ Preference data
 ------------------------------------------------------------
 '''
 #--Preprocessing pref data
+#Read from file, processing without folds
 pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
 
 
@@ -61,7 +62,7 @@ Component functions
 def imputation(matrix):
     
     #Compute column and row effect
-    _, nMean, mMean = deMean(matrix)
+    mMean, nMean = getMean(matrix)
 
     #Find nan iloc
     naniloc = np.where(np.isnan(matrix))
@@ -71,7 +72,7 @@ def imputation(matrix):
     matrix[naniloc] = np.nanmean(matrix) + np.take(nMean, naniloc[1]) + np.take(mMean, naniloc[0])
 
     #Substract mean, col and row effects from pref
-    matrix -= (np.reshape(nMean, (1, len(nMean))) + np.reshape(mMean, (len(mMean), 1)))
+    matrix = deMean(matrix, mMean, nMean)
 
     return matrix
 

@@ -45,23 +45,32 @@ def scatter(vectors, names):
 
 
 #--Remove row and column effect
-#Return matrix with effects removed (hopefully)
-def deMean(matrix_in):
+#Acquire row and column effect
+def getMean(matrix):
+
+    #Compute row and column effects
+    mMean = np.nanmean(matrix, axis=1) - np.mean(np.nanmean(matrix, axis=1))
+    nMean = np.nanmean(matrix, axis=0) - np.mean(np.nanmean(matrix, axis=0))
+
+    #Deal with empty row/column (all nan)
+    mMean[np.where(np.isnan(mMean))] = np.nanmean(matrix)
+    nMean[np.where(np.isnan(nMean))] = np.nanmean(matrix)
+
+    return mMean, nMean
+
+#Return matrix with row and column effects removed (hopefully)
+def deMean(matrix_in, mMean=[], nMean=[]):
+
+    #If not provided, use the input matrix to calculate the means
+    if len(mMean) == 0 or len(nMean) == 0: mMean, nMean = getMean(matrix_in)
 
     #Make a hard copy to avoid changing the original matrix in the function
     matrix_out = np.copy(matrix_in)
 
-    #Compute row and column effects
-    nMean = np.nanmean(matrix_out, axis=0) - np.mean(np.nanmean(matrix_out, axis=0))
-    mMean = np.nanmean(matrix_out, axis=1) - np.mean(np.nanmean(matrix_out, axis=1))
-
-    #Deal with empty column (all nan)
-    nMean[np.where(np.isnan(nMean))] = np.nanmean(matrix_in)
-
     #Compute new matrix removed the effects
     matrix_out -= (np.reshape(nMean, (1, len(nMean))) + np.reshape(mMean, (len(mMean), 1)))
 
-    return matrix_out, nMean, mMean
+    return matrix_out
 
 
 #--Evaluate model with mse, cor, and graphing
@@ -154,7 +163,7 @@ def preprocessing_core(pref_nan):
     nMN = len(np.where(isnan_inv)[0])
 
     #Subtract column and row effects for pref matrix and makes it long-form
-    prefs = deMean(pref_nan)[0][isnan_inv]
+    prefs = deMean(pref_nan)[isnan_inv]
 
     return prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
 
