@@ -11,8 +11,6 @@ DEBUG = False
 if not DEBUG: warnings.filterwarnings("ignore")
 
 
-
-
 '''
 ------------------------------------------------------------
 Preference data
@@ -22,10 +20,8 @@ Preference data
 #Read from file, processing without folds
 pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
 
-
-#--Acquire k-fold ids
-K_FOLD = 2
-id_train, id_test = kFold(K_FOLD, nMN, seed=1)
+#Log
+print('Now using entire data set.')
 
 
 #--Updating data as training and test sets
@@ -36,6 +32,7 @@ def preprocessing_kFold(foldId, _marker):
 
     #Reset data
     pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
+    naniloc_inv = np.where(isnan_inv)
 
     #Test set blanks training set ids
     if _marker == 'test':
@@ -51,9 +48,8 @@ def preprocessing_kFold(foldId, _marker):
     prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan)
 
     #Log
+    print('-' * 60)
     print('Now using fold #{}/{}, set {}.'.format(foldId, K_FOLD, _marker))
-
-preprocessing_kFold(1, 'test')
 
 
 
@@ -419,10 +415,10 @@ DEBUG = False
 #--Training and pipeline evaluate
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
 output_1 = gen_learnWeight(exp=EXP_41, m_dists=[], n_dists=[dist_review], _cf=True, _negSim=True, nRef=20, globalStep=0, nEpoch=100, lRate=0.5, batchSize=-1, title='CF+review')
-predictions_1, cor_1 = gen_model(**output_1)
+predictions_1, metrics_1 = gen_model(**output_1)
 
 output_2 = gen_learnWeight(exp=EXP_4, m_dists=[], n_dists=[dist_review], _cf=True, _negSim=False, nRef=20, globalStep=0, nEpoch=100, lRate=0.5, batchSize=-1, title='CF+review')
-predictions_2, cor_2 = gen_model(**output_2)
+predictions_2, metrics_2 = gen_model(**output_2)
 
 
 
@@ -497,15 +493,52 @@ def gen_model(exp, nRef, m_dists, n_dists, m_a, n_a, m_b, n_b, c, title, _negSim
     predictions_gen = predictions_nan[isnan_inv]
 
     #Evaluation
-    mse_gen, cor_gen, rho_gen = evalModel(predictions_gen, prefs, nMN, title=title, graph=graph)
+    metrics_gen = evalModel(predictions_gen, prefs, nMN, title=title, graph=graph)
 
     #Return the predicted value
-    return predictions_gen, cor_gen
+    return predictions_gen, metrics_gen
 
 
 DEBUG = False
 #--Operations
 #Use nRef = -1 to employ all cells other than self
 #u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
-predictions_gen, cor_gen = gen_model(exp=EXP_1, nRef=-1, m_dists=[], n_dists=[dist_review], m_a=[3.4591951], n_a=[14.910944], m_b=[1], n_b=[1], c=[-0.58396941], title='General model 1', graph=True)
-predictions_gen, cor_gen = gen_model(exp=EXP_4, nRef=-1, m_dists=[], n_dists=[dist_genre], m_a=[1], n_a=[0], m_b=[1], n_b=[0], c=[0], title='General model 2', _colMask=False, graph=False)
+predictions_gen, metrics_gen = gen_model(exp=EXP_1, nRef=-1, m_dists=[], n_dists=[dist_review], m_a=[3.4591951], n_a=[14.910944], m_b=[1], n_b=[1], c=[-0.58396941], title='General model 1', graph=True)
+predictions_gen, metrics_gen = gen_model(exp=EXP_4, nRef=-1, m_dists=[], n_dists=[dist_genre], m_a=[1], n_a=[0], m_b=[1], n_b=[0], c=[0], title='General model 2', _colMask=False, graph=False)
+
+
+
+
+'''
+------------------------------------------------------------
+K-fold CV for weights
+------------------------------------------------------------
+'''
+#--Initialization
+#Acquire k-fold ids
+K_FOLD = 2
+id_train, id_test = kFold(K_FOLD, nMN, seed=1)
+
+#Provide learning parameters
+kPara = {
+    'exp': EXP_1,
+    'm_dists': [], 'n_dists': [dist_review], '_cf': True,
+    '_negSim': False, 'nRef': -1,
+    'globalStep': 0, 'nEpoch': 50, 'lRate': 0.5, 'batchSize': -1,
+    'title': 'CF+review'}
+
+
+#--Learn weights and evaluate with each fold
+kMetrics = {'id': [], 'mse': [], 'cor': [], 'rho': []}
+for i in range(K_FOLD):
+    
+    preprocessing_kFold(i + 1, 'training')
+    output = gen_learnWeight(**kPara)
+
+    preprocessing_kFold(i + 1, 'test')
+    _, metrics = gen_model(**output)
+    
+    kMetrics['id'].append[i + 1]
+    kMetrics['mse'].append[metrics[0]]
+    kMetrics['cor'].append[metrics[1]]
+    kMetrics['rho'].append[metrics[2]]
