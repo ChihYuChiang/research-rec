@@ -438,6 +438,7 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
         output['exp'] = exp
         output['m_dists'] = m_dists
         output['n_dists'] = n_dists
+        output['_cf'] = _cf
         output['nRef'] = nRef
         output['title'] = title
         output['_colMask'] = _colMask
@@ -452,10 +453,10 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
 DEBUG = False
 #--Training and pipeline evaluate
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
-output_1 = gen_learnWeight(exp='2', m_dists=[], n_dists=[], _cf=True, nRef=-1, nEpoch=200, lRate=0.5, batchSize=-1, title='CF')
+output_1 = gen_learnWeight(exp='1', m_dists=[], n_dists=[], _cf=True, nRef=20, nEpoch=200, lRate=0.5, batchSize=-1, title='CF')
 predictions_1, metrics_1 = gen_model(**output_1)
 
-output_2 = gen_learnWeight(exp='2', m_dists=[], n_dists=[dist_review], _cf=True, nRef=-1, nEpoch=200, lRate=0.5, batchSize=-1, title='CF+review')
+output_2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[dist_review], _cf=True, nRef=20, nEpoch=200, lRate=0.5, batchSize=-1, title='CF+review')
 predictions_2, metrics_2 = gen_model(**output_2)
 
 
@@ -471,10 +472,9 @@ Model
 ------------------------------------------------------------
 '''
 #--Average similarity
-def gen_model(exp, nRef, m_dists, n_dists, m_a, n_a, m_b, n_b, c, title, _negSim=False, _colMask=False, graph=False):
+def gen_model(exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _negSim=False, _colMask=False, graph=False):
     
     #Initialize
-    _cf = len(m_dists) < len(m_a) #Marker, if include cf in model
     m_dists, n_dists = gen_ini_dist(m_dists, n_dists, _cf)
     m_a, n_a, m_b, n_b = gen_ini_w(m_a, n_a, m_b, n_b)
 
@@ -543,8 +543,8 @@ DEBUG = False
 #--Operations
 #Use nRef = -1 to employ all cells other than self
 #u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
-predictions_gen, metrics_gen = gen_model(exp='2', nRef=-1, m_dists=[np.ones((nM, nM))], n_dists=[np.ones((nN, nN))], m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='General model 1')
-predictions_gen, metrics_gen = gen_model(exp='1', nRef=-1, m_dists=[], n_dists=[], m_a=[1], n_a=[], m_b=[1], n_b=[], c=[0], title='General model 2')
+predictions_gen, metrics_gen = gen_model(exp='2', nRef=-1, m_dists=[np.ones((nM, nM))], n_dists=[np.ones((nN, nN))], _cf=False, m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='General model 1')
+predictions_gen, metrics_gen = gen_model(exp='1', nRef=-1, m_dists=[], n_dists=[], _cf=False, m_a=[1], n_a=[], m_b=[1], n_b=[], c=[0], title='General model 2')
 
 
 

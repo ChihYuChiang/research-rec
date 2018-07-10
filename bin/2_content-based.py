@@ -132,6 +132,8 @@ def cRec(pref_nan, v_dist, m, n, nRef, mode, ifRand):
 '''
 ------------------------------------------------------------
 Models
+
+- Note the true pref using here gets its own demean and is supposed to be revised
 ------------------------------------------------------------
 '''
 #--Leave-one-out cRec implementation

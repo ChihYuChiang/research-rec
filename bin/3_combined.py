@@ -57,6 +57,7 @@ def ensembleWeight_ap(predictionStack, prefs, nEpoch=2000, graph=False):
 Ensemble model
 
 - Read in the data and functions in 1. and 2. by hand.
+- Note the true pref using here gets its own demean and is supposed to be revised
 ------------------------------------------------------------
 '''
 #--Average prediction

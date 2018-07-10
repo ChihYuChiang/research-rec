@@ -170,6 +170,8 @@ if DEBUG: CF(pref_nan, None, 2, 1, 10, '1', False)
 '''
 ------------------------------------------------------------
 Models
+
+- Note the true pref using here gets its own demean and is supposed to be revised
 ------------------------------------------------------------
 '''
 #--Implementation wrapper
