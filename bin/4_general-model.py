@@ -1,4 +1,5 @@
 import numpy as np
+import re
 from scipy.stats import t as dis_t
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -82,7 +83,7 @@ EXP = {
             'tf.reduce_sum(n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
             'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')
         },
-    '21': {
+    '2n': {
         'var': '^(._a)|c:',
         'np': ('(((m_sim >= 0) * 2 - 1) * np.absolute(m_sim) ** m_a).sum(axis=0)',
            '(((n_sim >= 0) * 2 - 1) * np.absolute(n_sim) ** n_a).sum(axis=0)',
@@ -100,7 +101,7 @@ EXP = {
            'tf.reduce_sum(tf.tile(n_b, [batchSize, 1, nN, nN]) * n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
            'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')
         },
-    '31': {
+    '3n': {
         'var': '^(._a)|(._b)|c:',
         'np': ('(((m_sim >= 0) * 2 - 1) * m_b * np.absolute(m_sim) ** m_a).sum(axis=0)',
            '(((n_sim >= 0) * 2 - 1) * n_b * np.absolute(n_sim) ** n_a).sum(axis=0)',
@@ -118,7 +119,7 @@ EXP = {
            'tf.reduce_sum(tf.tile(n_b, [batchSize, 1, nN, nN]) * n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1) + eyeN_batch',
            'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')
         },
-    '41': {
+    '4n': {
         'var': '^(._a)|(._b)|c:',
         'np': ('(((m_sim >= 0) * 2 - 1) * m_b * np.absolute(m_sim) ** m_a).sum(axis=0) + np.eye(nM)',
            '(((n_sim >= 0) * 2 - 1) * n_b * np.absolute(n_sim) ** n_a).sum(axis=0) + np.eye(nN)',
@@ -167,21 +168,27 @@ def gen_ini_w(m_a, n_a, m_b, n_b):
     return m_a, n_a, m_b, n_b
 
 #Prepare pref_train for a particular target cell as rating reference
+#Prepare the truth adjusted by the col and row effects
 #Prepare a mask masking target self and all nan cells
 def gen_pref8mask(m, n, _colMask):
 
-    #Pref
+    #--Pref
     #Mask the pref_nan to acquire training (reference) data
     pref_train = pref_nan.copy()
+    truth = pref_train[m, n]
     pref_train[m, n] = np.nan
     
     #Mask the entire column (simulate a new product which has no rating)
     if _colMask: pref_train[:, n] = np.nan
+    
+    #Adjust the true preference by the col and row effects
+    mMean, nMean = getMean(pref_train)
+    truth -= mMean[m] + nMean[n]
 
-    #Impute nan with total mean and adjust by column and row effects
+    #Impute nan with total mean and adjust by column and row effects (demean)
     pref_train = imputation(pref_train)
 
-    #Mask
+    #--Mask
     #Remove self from the matrix 
     isnan_inv_mn = isnan_inv.copy()
     isnan_inv_mn[m, n] = False
@@ -189,7 +196,7 @@ def gen_pref8mask(m, n, _colMask):
     #Remove the entire column from the matrix
     if _colMask: isnan_inv_mn[:, n] = False
 
-    return pref_train, isnan_inv_mn
+    return pref_train, isnan_inv_mn, truth
 
 #Compute CF (if needed), transform distance to similarity
 def gen_dist2sim(m_dists, n_dists, _cf, pref_train, _negSim):
@@ -227,7 +234,7 @@ def gen_iniData(m_dists, n_dists, _cf):
     return m_dists, n_dists, len(m_dists) + _cf, len(n_dists)
 
 #Compile input dataset
-def gen_npDataset(m_dists, n_dists, _cf, pref_true, _negSim, _colMask):
+def gen_npDataset(m_dists, n_dists, _cf, _negSim, _colMask):
 
     #Empty containers
     pref_trains, masks, m_sims, n_sims, truths, ms, ns = ([] for i in range(7))
@@ -237,9 +244,8 @@ def gen_npDataset(m_dists, n_dists, _cf, pref_true, _negSim, _colMask):
         for n in gameRatedByRater[m]:
 
             #Prepare all required inputs
-            pref_train, mask = gen_pref8mask(m, n, _colMask)
+            pref_train, mask, truth = gen_pref8mask(m, n, _colMask)
             m_sim, n_sim = gen_dist2sim(m_dists, n_dists, _cf, pref_train, _negSim)
-            truth = pref_true[m, n]
 
             pref_trains.append(pref_train)
             masks.append(mask)
@@ -266,7 +272,7 @@ def gen_npDataset(m_dists, n_dists, _cf, pref_true, _negSim, _colMask):
 
 
 #--Learn weight (average similarity)
-def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=0, lRate=0.5, batchSize=-1, _negSim=False, _colMask=False, _shuffle=False, _graph=False):
+def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=0, lRate=0.5, batchSize=-1, _negSim=None, _colMask=False, _shuffle=False, _graph=False):
 
     #--Log
     title += ' (${}, nRef={}, lRate={}, bSize={})'.format(exp, nRef, lRate, batchSize)
@@ -275,9 +281,12 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
 
 
     #--Initialization
+    #Update options
+    if _negSim == None and re.search('n$', exp): _negSim = True
+
     #Prepare raw data
     m_dists_processed, n_dists_processed, nMDist, nNDist = gen_iniData(m_dists, n_dists, _cf)
-    dataset_np, nExample = gen_npDataset(m_dists_processed, n_dists_processed, _cf, deMean(pref_nan), _negSim, _colMask)
+    dataset_np, nExample = gen_npDataset(m_dists_processed, n_dists_processed, _cf, _negSim, _colMask)
     if batchSize == -1: batchSize = nExample #An epoch as a batch
     eyeM_batch = np.broadcast_to(np.eye(nM).reshape(1, nM, nM), (batchSize, nM, nM))
     eyeN_batch = np.broadcast_to(np.eye(nN).reshape(1, nN, nN), (batchSize, nN, nN))
@@ -443,10 +452,10 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
 DEBUG = False
 #--Training and pipeline evaluate
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
-output_1 = gen_learnWeight(exp='41', m_dists=[], n_dists=[dist_review], _cf=True, _negSim=False, nRef=-1, globalStep=0, nEpoch=100, lRate=0.5, batchSize=-1, title='CF+review')
+output_1 = gen_learnWeight(exp='2', m_dists=[], n_dists=[], _cf=True, nRef=-1, nEpoch=200, lRate=0.5, batchSize=-1, title='CF')
 predictions_1, metrics_1 = gen_model(**output_1)
 
-output_2 = gen_learnWeight(exp='4', m_dists=[], n_dists=[dist_review], _cf=True, _negSim=False, nRef=-1, globalStep=0, nEpoch=100, lRate=0.5, batchSize=-1, title='CF+review')
+output_2 = gen_learnWeight(exp='2', m_dists=[], n_dists=[dist_review], _cf=True, nRef=-1, nEpoch=200, lRate=0.5, batchSize=-1, title='CF+review')
 predictions_2, metrics_2 = gen_model(**output_2)
 
 
@@ -469,7 +478,8 @@ def gen_model(exp, nRef, m_dists, n_dists, m_a, n_a, m_b, n_b, c, title, _negSim
     m_dists, n_dists = gen_ini_dist(m_dists, n_dists, _cf)
     m_a, n_a, m_b, n_b = gen_ini_w(m_a, n_a, m_b, n_b)
 
-    #Prepare an empty prediction hull
+    #Prepare empty truth and prediction hulls
+    truths_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
     predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
 
     #Prediction, each cell by each cell
@@ -481,7 +491,7 @@ def gen_model(exp, nRef, m_dists, n_dists, m_a, n_a, m_b, n_b, c, title, _negSim
             
             #Prepare the reference ratings
             #Prepare the mask remove self and nan from the matrix 
-            pref_train, mask = gen_pref8mask(m, n, _colMask=_colMask)
+            pref_train, mask, truths_nan[m, n] = gen_pref8mask(m, n, _colMask=_colMask)
 
             if DEBUG: print('pref_train', pref_train)
             if DEBUG: print('mask', mask)
@@ -519,10 +529,11 @@ def gen_model(exp, nRef, m_dists, n_dists, m_a, n_a, m_b, n_b, c, title, _negSim
             if DEBUG: return ["", ""]
 
     #Take non-nan entries and makes into long-form by [isnan_inv] slicing
+    truths_gen = truths_nan[isnan_inv]
     predictions_gen = predictions_nan[isnan_inv]
 
     #Evaluation
-    metrics_gen = evalModel(predictions_gen, prefs, nMN, title=title, graph=graph)
+    metrics_gen = evalModel(predictions_gen, truths_gen, nMN, title=title, graph=graph)
 
     #Return the predicted value
     return predictions_gen, metrics_gen
@@ -532,8 +543,8 @@ DEBUG = False
 #--Operations
 #Use nRef = -1 to employ all cells other than self
 #u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
-predictions_gen, metrics_gen = gen_model(exp='1', nRef=-1, m_dists=[], n_dists=[dist_review], m_a=[3.4591951], n_a=[14.910944], m_b=[1], n_b=[1], c=[-0.58396941], title='General model 1', graph=True)
-predictions_gen, metrics_gen = gen_model(exp='4', nRef=-1, m_dists=[], n_dists=[dist_genre], m_a=[1], n_a=[0], m_b=[1], n_b=[0], c=[0], title='General model 2', _colMask=False, graph=False)
+predictions_gen, metrics_gen = gen_model(exp='2', nRef=-1, m_dists=[np.ones((nM, nM))], n_dists=[np.ones((nN, nN))], m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='General model 1')
+predictions_gen, metrics_gen = gen_model(exp='1', nRef=-1, m_dists=[], n_dists=[], m_a=[1], n_a=[], m_b=[1], n_b=[], c=[0], title='General model 2')
 
 
 
@@ -550,18 +561,24 @@ id_train, id_test = kFold(K_FOLD, nMN, seed=1)
 
 #Provide learning parameters
 #u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
-kPara = {
-    'exp': '1',
-    'title': 'CF',
-    'm_dists': [], 'n_dists': [], '_cf': True,
-    '_negSim': False, 'nRef': 10,
-    'globalStep': 0, 'nEpoch': 30, 'lRate': 0.5, 'batchSize': -1
-}
-{'exp': '21', '_negSim': True}
+kPara = {'nRef': -1, 'nEpoch': 1000, 'lRate': 0.5, 'batchSize': -1}
+{'exp': ['1', '2', '2n', '3', '3n', '4', '4n'],}
+
+dict.fromkeys(['title', 'm_dists', 'n_dists', '_cf'])
+[
+    ['review', [], [dist_review], False]
+    ['sat', [], [u_dist_sat], False]
+    ['person', [u_dist_person], [], False]
+    ['CF', [], [], True],
+    ['CF+review', [], [], True]
+    ['CF+sat', [], [], True]
+    ['CF+person', [], [], True]
+    ['CF+sat+person+review', [], [], True]
 
 
 #--Learn weights and evaluate with each fold
-kMetrics = {'mse': [], 'cor': [], 'rho': []}
+kMetrics = dict.fromkeys(['mse', 'cor', 'rho'], [])
+kMetrics.update({'mse': 'test'})
 for i in range(K_FOLD):
     
     gen_preprocessing_kFold(i + 1, 'training')
