@@ -77,7 +77,7 @@ def deMean(matrix_in, mMean=[], nMean=[]):
 def evalModel(predictions, truth, nMN, title, graph):
 
     #Description
-    mse = np.sum(np.square(predictions - truth) / nMN)
+    mse = np.sum(np.square(predictions - truth)) / nMN
     cor = np.corrcoef(predictions, truth)[0, 1]
     rho, _ = sp.stats.spearmanr(predictions, truth)
     print('-' * 60)
