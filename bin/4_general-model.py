@@ -21,11 +21,15 @@ Preference data
 pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
 
 #Log
+print('-' * 60)
 print('Now using entire data set.')
 
 
 #--Updating data as training and test sets
-def preprocessing_kFold(foldId, _marker):
+def gen_preprocessing_kFold(foldId, _marker):
+
+    #Fold id 1 -> 0
+    foldId -= 1
     
     #Manage global directly
     global pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
@@ -49,7 +53,7 @@ def preprocessing_kFold(foldId, _marker):
 
     #Log
     print('-' * 60)
-    print('Now using fold #{}/{}, set {}.'.format(foldId, K_FOLD, _marker))
+    print('Now using fold #{}/{}, set {}.'.format(foldId + 1, K_FOLD, _marker.upper()))
 
 
 
@@ -372,11 +376,17 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate,
                 #Tally the cost
                 cost_epoch += cost_batch
 
-            if ep % 10 == 0 or ep + 1 == nEpoch: #For text printing
-                print('Cost after epoch %i: %f' % (ep, cost_epoch))
             if ep % 1 == 0: #For graphing
                 costs.append(cost_epoch)
 
+            if ep >= 5: #For early termination
+                if sum(abs(np.array(costs[-4:-1]) - np.array(costs[-3:]))) <= 0.3:
+                    print('Cost after epoch %i: %f' % (ep, cost_epoch))
+                    break
+
+            if ep % 10 == 0 or ep + 1 == nEpoch: #For logging
+                print('Cost after epoch %i: %f' % (ep, cost_epoch))
+            
         #Graphing the change of the costs
         if _graph:
             plt.plot(np.squeeze(costs))
@@ -414,10 +424,10 @@ def gen_learnWeight(exp, m_dists, n_dists, _cf, nRef, nEpoch, globalStep, lRate,
 DEBUG = False
 #--Training and pipeline evaluate
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
-output_1 = gen_learnWeight(exp=EXP_41, m_dists=[], n_dists=[dist_review], _cf=True, _negSim=True, nRef=20, globalStep=0, nEpoch=100, lRate=0.5, batchSize=-1, title='CF+review')
+output_1 = gen_learnWeight(exp=EXP_41, m_dists=[], n_dists=[dist_review], _cf=True, _negSim=True, nRef=-1, globalStep=0, nEpoch=100, lRate=0.5, batchSize=-1, title='CF+review')
 predictions_1, metrics_1 = gen_model(**output_1)
 
-output_2 = gen_learnWeight(exp=EXP_4, m_dists=[], n_dists=[dist_review], _cf=True, _negSim=False, nRef=20, globalStep=0, nEpoch=100, lRate=0.5, batchSize=-1, title='CF+review')
+output_2 = gen_learnWeight(exp=EXP_4, m_dists=[], n_dists=[dist_review], _cf=True, _negSim=False, nRef=-1, globalStep=0, nEpoch=100, lRate=0.5, batchSize=-1, title='CF+review')
 predictions_2, metrics_2 = gen_model(**output_2)
 
 
@@ -520,25 +530,31 @@ K_FOLD = 2
 id_train, id_test = kFold(K_FOLD, nMN, seed=1)
 
 #Provide learning parameters
+#u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
 kPara = {
     'exp': EXP_1,
-    'm_dists': [], 'n_dists': [dist_review], '_cf': True,
-    '_negSim': False, 'nRef': -1,
-    'globalStep': 0, 'nEpoch': 50, 'lRate': 0.5, 'batchSize': -1,
-    'title': 'CF+review'}
+    'title': 'CF',
+    'm_dists': [], 'n_dists': [], '_cf': True,
+    '_negSim': False, 'nRef': 10,
+    'globalStep': 0, 'nEpoch': 30, 'lRate': 0.5, 'batchSize': -1
+}
 
 
 #--Learn weights and evaluate with each fold
 kMetrics = {'id': [], 'mse': [], 'cor': [], 'rho': []}
 for i in range(K_FOLD):
     
-    preprocessing_kFold(i + 1, 'training')
+    gen_preprocessing_kFold(i + 1, 'training')
     output = gen_learnWeight(**kPara)
 
-    preprocessing_kFold(i + 1, 'test')
+    gen_preprocessing_kFold(i + 1, 'test')
     _, metrics = gen_model(**output)
     
-    kMetrics['id'].append[i + 1]
-    kMetrics['mse'].append[metrics[0]]
-    kMetrics['cor'].append[metrics[1]]
-    kMetrics['rho'].append[metrics[2]]
+    kMetrics['id'].append(i + 1)
+    kMetrics['mse'].append(metrics[0])
+    kMetrics['cor'].append(metrics[1])
+    kMetrics['rho'].append(metrics[2])
+
+gen_preprocessing_kFold(1, 'training')
+output = gen_learnWeight(**kPara)
+_, metrics = gen_model(**output)
