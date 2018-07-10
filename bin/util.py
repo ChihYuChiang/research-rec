@@ -75,17 +75,19 @@ def deMean(matrix_in, mMean=[], nMean=[]):
 
 
 #--Evaluate model with mse, cor, and graphing
-def evalModel(predictions, truth, nMN, title, graph):
+def evalModel(predictions, truth, nMN, title, graph, logger=None):
 
     #Description
     mse = np.sum(np.square(predictions - truth)) / nMN
     cor = np.corrcoef(predictions, truth)[0, 1]
     rho, _ = sp.stats.spearmanr(predictions, truth)
-    print('-' * 60)
-    print(title)
-    print('MSE =', mse)
-    print('Correlation =', cor)
-    print('RankCorrelation =', rho)
+
+    output = logger if logger else print
+    output('-' * 60)
+    output(title)
+    output('MSE = {}'.format(mse))
+    output('Correlation = {}'.format(cor))
+    output('RankCorrelation = {}'.format(rho))
 
     #Graphing
     if graph: scatter([truth, predictions], ['truth', 'predictions'])

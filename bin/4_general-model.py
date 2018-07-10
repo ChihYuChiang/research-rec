@@ -412,7 +412,7 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
                     break
 
             if ep % 10 == 0 or ep + 1 == nEpoch: #For logging
-                print('Cost after epoch %i: %f' % (ep, cost_epoch))
+                logger.debug('Cost after epoch %i: %f' % (ep, cost_epoch))
             
             if ep + 1 == nEpoch: #Dealing with early termination
                 logger.info('Failed to converge. Terminated after {} epochs.'.format(nEpoch))
@@ -535,7 +535,7 @@ def gen_model(exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _n
     predictions_gen = predictions_nan[isnan_inv]
 
     #Evaluation
-    metrics_gen = evalModel(predictions_gen, truths_gen, nMN, title=title, graph=graph)
+    metrics_gen = evalModel(predictions_gen, truths_gen, nMN, title=title, graph=graph, logger=logger.info)
 
     #Return the predicted value
     return predictions_gen, metrics_gen
