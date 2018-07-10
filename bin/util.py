@@ -16,6 +16,7 @@ Generic functions
 #Return: a flattened list as a generator
 def flattenList(l):
     import collections
+
     for el in l:
         if isinstance(el, collections.Sequence) and not isinstance(el, (str, bytes)):
             yield from flattenList(el)
@@ -115,6 +116,33 @@ def kFold(k, nMN, seed=1):
 
     return id_train, id_test
     
+
+#--Logger
+def iniLogger(fileName):
+    import logging
+
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+
+    #Create file handler
+    fh = logging.FileHandler('../log/{}'.format(fileName), mode='w+')
+    fh.setLevel(logging.INFO)
+    
+    #Create console handler
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    
+    #Create formatter and add it to the handlers
+    formatter = logging.Formatter('%(message)s')
+    ch.setFormatter(formatter)
+    fh.setFormatter(formatter)
+
+    #'Add the handlers to logger
+    logger.addHandler(ch)
+    logger.addHandler(fh)
+
+    return logger
+
 
 
 

@@ -6,6 +6,8 @@ import seaborn as sns
 from util import *
 import warnings
 
+#Debuggin setting
+logger = iniLogger('GM.log')
 DEBUG = False
 
 #Suppress warning due to tf gather
@@ -53,8 +55,8 @@ def gen_preprocessing_kFold(foldId, _marker):
     prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan)
 
     #Log
-    print('-' * 60)
-    print('Now using fold #{}/{}, set {}.'.format(foldId + 1, K_FOLD, _marker.upper()))
+    logger.info('-' * 60)
+    logger.info('Now using fold #{}/{}, set {}.'.format(foldId + 1, K_FOLD, _marker.upper()))
 
 
 
@@ -276,8 +278,8 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
 
     #--Log
     title += ' (${}, nRef={}, lRate={}, bSize={})'.format(exp, nRef, lRate, batchSize)
-    print('-' * 60)
-    print(title)
+    logger.info('-' * 60)
+    logger.info(title)
 
 
     #--Initialization
@@ -406,14 +408,14 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
 
             if ep >= 5: #For convergence termination
                 if sum(abs(np.array(costs[-4:-1]) - np.array(costs[-3:]))) <= 0.3:
-                    print('Cost after epoch %i: %f' % (ep, cost_epoch))
+                    logger.info('Cost after epoch %i: %f' % (ep, cost_epoch))
                     break
 
             if ep % 10 == 0 or ep + 1 == nEpoch: #For logging
                 print('Cost after epoch %i: %f' % (ep, cost_epoch))
             
             if ep + 1 == nEpoch: #Dealing with early termination
-                print('Failed to converge. Terminated after {} epochs.'.format(nEpoch))
+                logger.info('Failed to converge. Terminated after {} epochs.'.format(nEpoch))
 
         #Graphing the change of the costs
         if _graph:
@@ -426,11 +428,11 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
 
         #Output
         output = sess.run({'m_a': m_a, 'n_a': n_a, 'm_b': m_b, 'n_b': n_b, 'c': [c]})
-        print('m_a:', list(output['m_a'].flatten()))
-        print('n_a:', list(output['n_a'].flatten()))
-        print('m_b:', list(output['m_b'].flatten()))
-        print('n_b:', list(output['n_b'].flatten()))
-        print('c:', list(output['c']))
+        logger.info('m_a: ' + str(list(output['m_a'].flatten())))
+        logger.info('n_a: ' + str(list(output['n_a'].flatten())))
+        logger.info('m_b: ' + str(list(output['m_b'].flatten())))
+        logger.info('n_b: ' + str(list(output['n_b'].flatten())))
+        logger.info('c: ' + str(list(output['c'])))
 
         # saver.save(sess, './../data/checkpoint/gen_weight_{}'.format(title), global_step=globalStep + nEpoch)
 
@@ -453,10 +455,10 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
 DEBUG = False
 #--Training and pipeline evaluate
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
-output_1 = gen_learnWeight(exp='1', m_dists=[], n_dists=[], _cf=True, nRef=20, nEpoch=200, lRate=0.5, batchSize=-1, title='CF')
+output_1 = gen_learnWeight(exp='1', m_dists=[], n_dists=[], _cf=True, nRef=20, nEpoch=10, lRate=0.5, batchSize=-1, title='CF')
 predictions_1, metrics_1 = gen_model(**output_1)
 
-output_2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[dist_review], _cf=True, nRef=20, nEpoch=200, lRate=0.5, batchSize=-1, title='CF+review')
+output_2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[dist_review], _cf=True, nRef=10, nEpoch=30, lRate=0.5, batchSize=-1, title='CF+review')
 predictions_2, metrics_2 = gen_model(**output_2)
 
 
