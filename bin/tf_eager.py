@@ -11,7 +11,9 @@ x.shape
 m_a.shape
 tf.cast(x > 1, np.int32) * 2 - 1
 
-m = tf.reduce_sum(x ** tf.tile(m_a, [1, 2, 3]), axis=0)
+m_a = np.array([[[[0.]], [[0.]]]])
+m = tf.reduce_prod(x ** tf.cast(tf.tile(m_a, [2, 1, 2, 3]), tf.float32), axis=1)
+
 tf.tile(tf.reshape([1, 2, 3], [3, 1]), [1, 5])
 tf.tile(tf.reshape([1, 2, 3], [1, 3]), [5, 1])
 print(m)

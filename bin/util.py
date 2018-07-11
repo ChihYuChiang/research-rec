@@ -4,6 +4,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import tensorflow as tf
+import logging
 
 
 '''
@@ -121,8 +122,8 @@ def kFold(k, nMN, seed=1):
 
 #--Logger
 def iniLogger(fileName):
-    import logging
 
+    #Use the default logger
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 

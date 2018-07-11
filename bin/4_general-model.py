@@ -7,7 +7,7 @@ from util import *
 import warnings
 
 #Debuggin setting
-logger = iniLogger('GM.log')
+logger = iniLogger('GM.log') if 'logger' not in globals() else logger
 DEBUG = False
 
 #Suppress warning due to tf gather
@@ -19,6 +19,7 @@ if not DEBUG: warnings.filterwarnings("ignore")
 Preference data
 ------------------------------------------------------------
 '''
+gen_preprocessing_kFold(0, 'training')
 #--Preprocessing pref data
 #Read from file, processing without folds
 pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
@@ -33,6 +34,7 @@ def gen_preprocessing_kFold(foldId, _marker):
 
     #Fold id 1 -> 0
     foldId -= 1
+    assert foldId > 0, 'Fold ID starts from 1.'
     
     #Manage global directly
     global pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
@@ -288,7 +290,17 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
 
     #Prepare raw data
     m_dists_processed, n_dists_processed, nMDist, nNDist = gen_iniData(m_dists, n_dists, _cf)
+
+    if DEBUG: print(m_dists_processed)
+    if DEBUG: print(n_dists_processed)
+    if DEBUG: print(nMDist)
+    if DEBUG: print(nNDist)
+
     dataset_np, nExample = gen_npDataset(m_dists_processed, n_dists_processed, _cf, _negSim, _colMask)
+
+    if DEBUG: print(dataset_np['m_sims'][0])
+    if DEBUG: print(dataset_np['n_sims'][0])
+    
     if batchSize == -1: batchSize = nExample #An epoch as a batch
     eyeM_batch = np.broadcast_to(np.eye(nM).reshape(1, nM, nM), (batchSize, nM, nM))
     eyeN_batch = np.broadcast_to(np.eye(nN).reshape(1, nN, nN), (batchSize, nN, nN))
@@ -398,6 +410,7 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
                 #Run operation
                 _, cost_batch, p = sess.run([opt, cost, pred])
 
+                if DEBUG and ep == nEpoch - 1: mt, nt, mnt = sess.run([m_sim_w, n_sim_w, mn_sim])
                 if DEBUG and ep == nEpoch - 1: recordP.append(p)
 
                 #Tally the cost
@@ -446,19 +459,22 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
         output['_colMask'] = _colMask
         output['_negSim'] = _negSim
 
+        if DEBUG: print('m_sim_w', mt[0])
+        if DEBUG: print('n_sim_w', nt[0])
+        if DEBUG: print('mn_sim', mnt[0])
         if DEBUG: print('truths', dataset_np['truths'])
         if DEBUG: print('predictions at {} epoch'.format(nEpoch), recordP)
 
         return output
 
 
-DEBUG = False
+DEBUG = True
 #--Training and pipeline evaluate
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
-output_1 = gen_learnWeight(exp='1', m_dists=[], n_dists=[], _cf=True, nRef=20, nEpoch=10, lRate=0.5, batchSize=-1, title='CF')
+output_1 = gen_learnWeight(exp='1', m_dists=[], n_dists=[dist_review], _cf=False, nRef=-1, nEpoch=10, lRate=0.5, batchSize=-1, title='Review')
 predictions_1, metrics_1 = gen_model(**output_1)
 
-output_2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[dist_review], _cf=True, nRef=10, nEpoch=30, lRate=0.5, batchSize=-1, title='CF+review')
+output_2 = gen_learnWeight(exp='1', m_dists=[u_dist_person], n_dists=[], _cf=False, nRef=-1, nEpoch=10, lRate=0.5, batchSize=-1, title='Base')
 predictions_2, metrics_2 = gen_model(**output_2)
 
 
@@ -553,46 +569,64 @@ predictions_gen, metrics_gen = gen_model(exp='1', nRef=-1, m_dists=[], n_dists=[
 
 '''
 ------------------------------------------------------------
-K-fold CV for weights
+K-fold CV, comparing models
 ------------------------------------------------------------
 '''
 #--Initialization
 #Acquire k-fold ids
-K_FOLD = 2
+K_FOLD = 4
 id_train, id_test = kFold(K_FOLD, nMN, seed=1)
 
-#Provide learning parameters
-#u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
-kPara = {'nRef': -1, 'nEpoch': 1000, 'lRate': 0.5, 'batchSize': -1}
-{'exp': ['1', '2', '2n', '3', '3n', '4', '4n'],}
 
-dict.fromkeys(['title', 'm_dists', 'n_dists', '_cf'])
-[
-    ['review', [], [dist_review], False]
-    ['sat', [], [u_dist_sat], False]
-    ['person', [u_dist_person], [], False]
+#--Provide learning parameters
+#Common parameters
+gen_learnWeight_kFold = partial(gen_learnWeight, nRef=-1, nEpoch=10, lRate=0.5, batchSize=-1)
+
+#Parameters to loop over
+#u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
+paras = {
+'exp': ['1', '2', '2n', '3', '3n', '4', '4n'],
+'para_key': ['title', 'm_dists', 'n_dists', '_cf'],
+'para': [
+    ['Review', [], [dist_review], False],
+    ['Sat', [u_dist_sat], [], False],
+    ['Person', [u_dist_person], [], False],
     ['CF', [], [], True],
-    ['CF+review', [], [], True]
-    ['CF+sat', [], [], True]
-    ['CF+person', [], [], True]
-    ['CF+sat+person+review', [], [], True]
+    ['CF+review', [], [dist_review], True],
+    ['CF+sat', [u_dist_sat], [], True],
+    ['CF+person', [u_dist_person], [], True],
+    ['CF+sat+person+review', [u_dist_sat, u_dist_person], [dist_review], True]
+]
+}
 
 
 #--Learn weights and evaluate with each fold
-kMetrics = dict.fromkeys(['mse', 'cor', 'rho'], [])
-kMetrics.update({'mse': 'test'})
-for i in range(K_FOLD):
-    
-    gen_preprocessing_kFold(i + 1, 'training')
-    output = gen_learnWeight(**kPara)
+for exp in paras['exp']:
 
-    gen_preprocessing_kFold(i + 1, 'test')
-    _, metrics = gen_model(**output)
-    
-    kMetrics['mse'].append(metrics[0])
-    kMetrics['cor'].append(metrics[1])
-    kMetrics['rho'].append(metrics[2])
+    logger.info('=' * 60)
+    logger.info('Expression ' + exp)
 
-gen_preprocessing_kFold(1, 'training')
-output = gen_learnWeight(**kPara)
-_, metrics = gen_model(**output)
+    for para in paras['para']:
+        kMse, kCor, kRho = ([] for i in range(3))
+        
+        for i in range(K_FOLD):
+            gen_preprocessing_kFold(i + 1, 'training')
+            para_dic = dict.fromkeys(paras['para_key'])
+            para_dic.update(zip(paras['para_key'], para))
+            output = gen_learnWeight_kFold(exp=exp, **para_dic)
+
+            gen_preprocessing_kFold(i + 1, 'test')
+            _, metrics = gen_model(**output)
+
+            kMse.append(metrics[0])
+            kCor.append(metrics[1])
+            kRho.append(metrics[2])
+
+        logger.info('-' * 60)
+        logger.info(output['title'])
+        logger.info('Average MSE = {}'.format(np.mean(kMse)))
+        logger.info('Average correlation = {}'.format(np.mean(kCor)))
+        logger.info('Average rankCorrelation = {}'.format(np.mean(kRho)))
+        logger.info('-' * 60)
+
+i = 1
