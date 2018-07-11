@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import re
 from scipy.stats import t as dis_t
 import matplotlib.pyplot as plt
@@ -19,10 +20,12 @@ if not DEBUG: warnings.filterwarnings("ignore")
 Preference data
 ------------------------------------------------------------
 '''
-gen_preprocessing_kFold(0, 'training')
 #--Preprocessing pref data
 #Read from file, processing without folds
 pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
+
+#Number of example of the entire data set
+nMN_whole = nMN
 
 #Log
 print('-' * 60)
@@ -31,10 +34,11 @@ print('Now using the entire data set.')
 
 #--Updating data as training and test sets
 def gen_preprocessing_kFold(foldId, _marker):
+    assert foldId >= 0, 'Fold ID starts from 1.'
+    assert _marker in ['training', 'test'], 'Wrong marker.'
 
     #Fold id 1 -> 0
     foldId -= 1
-    assert foldId > 0, 'Fold ID starts from 1.'
     
     #Manage global directly
     global pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
@@ -353,14 +357,14 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
 
     #Prediction
     if nRef == -1:
-        pred = c + tf.reduce_sum(pref_train_mask * mn_sim_mask, axis=1) / tf.reduce_sum(mn_sim_mask, axis=1)
+        pred = c + tf.reduce_sum(pref_train_mask * mn_sim_mask, axis=1) / tf.clip_by_value(tf.reduce_sum(mn_sim_mask, axis=1), 1e-10, nM * nN)
     else:
         _, refIdx = tf.nn.top_k(mn_sim_mask, k=nRef, sorted=True)
         refIdx = refIdx[:, :nRef]
         ax = np.broadcast_to(np.arange(batchSize).reshape((batchSize, 1)), (batchSize, nRef))
         refIdx = tf.stack([ax, refIdx], axis=2)
         
-        pred = c + tf.reduce_sum(tf.gather_nd(pref_train_mask * mn_sim_mask, refIdx), axis=1) / tf.reduce_sum(tf.gather_nd(mn_sim_mask, refIdx),  axis=1)
+        pred = c + tf.reduce_sum(tf.gather_nd(pref_train_mask * mn_sim_mask, refIdx), axis=1) / tf.clip_by_value(tf.reduce_sum(tf.gather_nd(mn_sim_mask, refIdx), axis=1), 1e-10, nM * nN)
     
     #Cost (SE)
     cost = tf.reduce_sum((pred - pref_true) ** 2)
@@ -405,7 +409,7 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
             cost_epoch = 0
 
             #Loop over number of example
-            for _ in range(nExample // batchSize + 1):
+            for _ in range(math.ceil(nExample / batchSize)):
 
                 #Run operation
                 _, cost_batch, p = sess.run([opt, cost, pred])
@@ -468,13 +472,12 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
         return output
 
 
-DEBUG = True
+DEBUG = False
 #--Training and pipeline evaluate
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
-output_1 = gen_learnWeight(exp='1', m_dists=[], n_dists=[dist_review], _cf=False, nRef=-1, nEpoch=10, lRate=0.5, batchSize=-1, title='Review')
+output_1 = gen_learnWeight(exp='1', m_dists=[], n_dists=[dist_review], _cf=True, nRef=-1, nEpoch=100, lRate=0.5, batchSize=-1, title='CF+review')
 predictions_1, metrics_1 = gen_model(**output_1)
-
-output_2 = gen_learnWeight(exp='1', m_dists=[u_dist_person], n_dists=[], _cf=False, nRef=-1, nEpoch=10, lRate=0.5, batchSize=-1, title='Base')
+output_2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[], _cf=True, nRef=-1, nEpoch=100, lRate=0.01, batchSize=-1, title='CF')
 predictions_2, metrics_2 = gen_model(**output_2)
 
 
@@ -538,7 +541,8 @@ def gen_model(exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _n
             refIdx = np.argsort(-mn_sim[mask])[:nRef]
 
             #Flatten, nan removed, and make prediction based on the combined similarity
-            predictions_nan[m, n] = c[0] + (np.sum((pref_train[mask] * mn_sim[mask])[refIdx]) / np.sum(mn_sim[mask][refIdx]))
+            #Clipping the value to avoid 0 division
+            predictions_nan[m, n] = c[0] + np.sum((pref_train[mask] * mn_sim[mask])[refIdx]) / np.clip(np.sum(mn_sim[mask][refIdx]), 1e-10, nM * nN)
 
             if DEBUG: print('ref_rating', pref_train[mask][refIdx])
             if DEBUG: print('ref_sim', mn_sim[mask][refIdx])
@@ -574,27 +578,28 @@ K-fold CV, comparing models
 '''
 #--Initialization
 #Acquire k-fold ids
-K_FOLD = 4
-id_train, id_test = kFold(K_FOLD, nMN, seed=1)
+K_FOLD = 2
+id_train, id_test = kFold(K_FOLD, nMN_whole, seed=1)
 
 
 #--Provide learning parameters
 #Common parameters
-gen_learnWeight_kFold = partial(gen_learnWeight, nRef=-1, nEpoch=10, lRate=0.5, batchSize=-1)
+gen_learnWeight_kFold = partial(gen_learnWeight, nRef=-1, nEpoch=30, lRate=0.1, batchSize=-1)
 
 #Parameters to loop over
 #u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
 paras = {
-'exp': ['1', '2', '2n', '3', '3n', '4', '4n'],
+'exp': ['1'],
+# 'exp': ['1', '2', '2n', '3', '3n', '4', '4n'],
 'para_key': ['title', 'm_dists', 'n_dists', '_cf'],
 'para': [
     ['Review', [], [dist_review], False],
-    ['Sat', [u_dist_sat], [], False],
-    ['Person', [u_dist_person], [], False],
-    ['CF', [], [], True],
+    # ['Sat', [u_dist_sat], [], False],
+    # ['Person', [u_dist_person], [], False],
+    # ['CF', [], [], True],
     ['CF+review', [], [dist_review], True],
-    ['CF+sat', [u_dist_sat], [], True],
-    ['CF+person', [u_dist_person], [], True],
+    # ['CF+sat', [u_dist_sat], [], True],
+    # ['CF+person', [u_dist_person], [], True],
     ['CF+sat+person+review', [u_dist_sat, u_dist_person], [dist_review], True]
 ]
 }
@@ -623,10 +628,9 @@ for exp in paras['exp']:
             kRho.append(metrics[2])
 
         logger.info('-' * 60)
+        logger.info('-' * 60)
         logger.info(output['title'])
         logger.info('Average MSE = {}'.format(np.mean(kMse)))
         logger.info('Average correlation = {}'.format(np.mean(kCor)))
         logger.info('Average rankCorrelation = {}'.format(np.mean(kRho)))
         logger.info('-' * 60)
-
-i = 1
