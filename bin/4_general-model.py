@@ -6,9 +6,23 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from util import *
 import warnings
+import logging
 
-#Debuggin setting
-logger = iniLogger('GM.log') if 'logger' not in globals() else logger
+#--Debuggin setting
+#General logger
+logger = iniLogger('GM.log', extrah) if 'logger' not in globals() else logger
+
+#CSV logger
+logger_csv = logging.getLogger('csv')
+formatter = logging.Formatter('%(message)s')
+fh = logging.FileHandler('../log/GM.csv', mode='w+')
+fh.setFormatter(formatter)
+logger_csv.addHandler(fh)
+
+logger_csv.info('\"test tile is like this\", 35, 26, 55')
+
+#Markers
+_currentData = ''
 DEBUG = False
 
 #Suppress warning due to tf gather
@@ -28,6 +42,7 @@ pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(descri
 nMN_whole = nMN
 
 #Log
+_currentData = 'whole'
 print('-' * 60)
 print('Now using the entire data set.')
 
@@ -42,6 +57,7 @@ def gen_preprocessing_kFold(foldId, _marker):
     
     #Manage global directly
     global pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
+    global _currentData
 
     #Reset data
     pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
@@ -61,8 +77,9 @@ def gen_preprocessing_kFold(foldId, _marker):
     prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan)
 
     #Log
-    logger.info('-' * 60)
-    logger.info('Now using fold #{}/{}, set {}.'.format(foldId + 1, K_FOLD, _marker.upper()))
+    _currentData = 'fold #{}/{}, set {}.'.format(foldId + 1, K_FOLD, _marker.upper())
+    logger.debug('-' * 60)
+    logger.debug('Now using ' + _currentData)
 
 
 
@@ -283,7 +300,7 @@ def gen_npDataset(m_dists, n_dists, _cf, _negSim, _colMask):
 def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=0, lRate=0.5, batchSize=-1, _negSim=None, _colMask=False, _shuffle=False, _graph=False):
 
     #--Log
-    title += ' (${}, nRef={}, lRate={}, bSize={})'.format(exp, nRef, lRate, batchSize)
+    title += ' (${}, nRef={}, lRate={}, bSize={}) ({})'.format(exp, nRef, lRate, batchSize, _currentData)
     logger.info('-' * 60)
     logger.info(title)
 
@@ -357,14 +374,14 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
 
     #Prediction
     if nRef == -1:
-        pred = c + tf.reduce_sum(pref_train_mask * mn_sim_mask, axis=1) / tf.clip_by_value(tf.reduce_sum(mn_sim_mask, axis=1), 1e-10, nM * nN)
+        pred = c + tf.reduce_sum(pref_train_mask * mn_sim_mask, axis=1) / (tf.reduce_sum(mn_sim_mask, axis=1) + 1e-10)
     else:
         _, refIdx = tf.nn.top_k(mn_sim_mask, k=nRef, sorted=True)
         refIdx = refIdx[:, :nRef]
         ax = np.broadcast_to(np.arange(batchSize).reshape((batchSize, 1)), (batchSize, nRef))
         refIdx = tf.stack([ax, refIdx], axis=2)
         
-        pred = c + tf.reduce_sum(tf.gather_nd(pref_train_mask * mn_sim_mask, refIdx), axis=1) / tf.clip_by_value(tf.reduce_sum(tf.gather_nd(mn_sim_mask, refIdx), axis=1), 1e-10, nM * nN)
+        pred = c + tf.reduce_sum(tf.gather_nd(pref_train_mask * mn_sim_mask, refIdx), axis=1) / (tf.reduce_sum(tf.gather_nd(mn_sim_mask, refIdx), axis=1) + 1e-10)
     
     #Cost (SE)
     cost = tf.reduce_sum((pred - pref_true) ** 2)
@@ -428,11 +445,11 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
                     logger.info('Cost after epoch %i: %f' % (ep, cost_epoch))
                     break
 
-            if ep % 10 == 0 or ep + 1 == nEpoch: #For logging
+            if ep % 10 == 0: #For logging cost progress
                 logger.debug('Cost after epoch %i: %f' % (ep, cost_epoch))
             
             if ep + 1 == nEpoch: #Dealing with early termination
-                logger.info('Failed to converge. Terminated after {} epochs.'.format(nEpoch))
+                logger.info('Failed to converge. Terminated with cost after {} epochs: {}'.format(nEpoch, cost_epoch))
 
         #Graphing the change of the costs
         if _graph:
@@ -444,11 +461,11 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
             plt.close()
 
         #Output
-        output = sess.run({'m_a': m_a, 'n_a': n_a, 'm_b': m_b, 'n_b': n_b, 'c': [c]})
-        logger.info('m_a: ' + str(list(output['m_a'].flatten())))
-        logger.info('n_a: ' + str(list(output['n_a'].flatten())))
-        logger.info('m_b: ' + str(list(output['m_b'].flatten())))
-        logger.info('n_b: ' + str(list(output['n_b'].flatten())))
+        output = sess.run({'m_a': m_a.reshape(-1), 'n_a': n_a.reshape(-1), 'm_b': m_b.reshape(-1), 'n_b': n_b.reshape(-1), 'c': [c]})
+        logger.info('m_a: ' + str(list(output['m_a'])))
+        logger.info('n_a: ' + str(list(output['n_a'])))
+        logger.info('m_b: ' + str(list(output['m_b'])))
+        logger.info('n_b: ' + str(list(output['n_b'])))
         logger.info('c: ' + str(list(output['c'])))
 
         # saver.save(sess, './../data/checkpoint/gen_weight_{}'.format(title), global_step=globalStep + nEpoch)
@@ -475,10 +492,17 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
 DEBUG = False
 #--Training and pipeline evaluate
 #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
-output_1 = gen_learnWeight(exp='1', m_dists=[], n_dists=[dist_review], _cf=True, nRef=-1, nEpoch=100, lRate=0.5, batchSize=-1, title='CF+review')
+output_1 = gen_learnWeight(exp='1', m_dists=[u_dist_person, u_dist_sat, u_dist_demo], n_dists=[dist_triplet, dist_review, dist_genre], _cf=True, nRef=-1, nEpoch=200, lRate=0.01, batchSize=-1, title='All')
 predictions_1, metrics_1 = gen_model(**output_1)
 output_2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[], _cf=True, nRef=-1, nEpoch=100, lRate=0.01, batchSize=-1, title='CF')
 predictions_2, metrics_2 = gen_model(**output_2)
+
+output_base0 = gen_learnWeight(exp='1', m_dists=[], n_dists=[], _cf=False, nRef=-1, nEpoch=100, lRate=1, batchSize=-1, title='Base_none')
+predictions_base0, metrics_base0 = gen_model(**output_base0)
+output_base1 = gen_learnWeight(exp='1', m_dists=[np.eye((nM))], n_dists=[], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_eyeM')
+predictions_base1, metrics_base1 = gen_model(**output_base1)
+output_base2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[np.eye((nN))], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_eyeN')
+predictions_base2, metrics_base2 = gen_model(**output_base2)
 
 
 
@@ -542,7 +566,7 @@ def gen_model(exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _n
 
             #Flatten, nan removed, and make prediction based on the combined similarity
             #Clipping the value to avoid 0 division
-            predictions_nan[m, n] = c[0] + np.sum((pref_train[mask] * mn_sim[mask])[refIdx]) / np.clip(np.sum(mn_sim[mask][refIdx]), 1e-10, nM * nN)
+            predictions_nan[m, n] = c[0] + np.sum((pref_train[mask] * mn_sim[mask])[refIdx]) / (np.sum(mn_sim[mask][refIdx]) + 1e-10)
 
             if DEBUG: print('ref_rating', pref_train[mask][refIdx])
             if DEBUG: print('ref_sim', mn_sim[mask][refIdx])
@@ -608,18 +632,22 @@ paras = {
 #--Learn weights and evaluate with each fold
 for exp in paras['exp']:
 
+    #Log title
     logger.info('=' * 60)
     logger.info('Expression ' + exp)
 
     for para in paras['para']:
+        #Record metrics of a particular para combination
         kMse, kCor, kRho = ([] for i in range(3))
         
         for i in range(K_FOLD):
+            #Using training set to learn the weights
             gen_preprocessing_kFold(i + 1, 'training')
             para_dic = dict.fromkeys(paras['para_key'])
             para_dic.update(zip(paras['para_key'], para))
             output = gen_learnWeight_kFold(exp=exp, **para_dic)
 
+            #Using test set to observe the performance
             gen_preprocessing_kFold(i + 1, 'test')
             _, metrics = gen_model(**output)
 
@@ -627,6 +655,7 @@ for exp in paras['exp']:
             kCor.append(metrics[1])
             kRho.append(metrics[2])
 
+        #Log the performance of each para combination by averaging performance of all folds 
         logger.info('-' * 60)
         logger.info('-' * 60)
         logger.info(output['title'])
