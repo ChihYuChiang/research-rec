@@ -9,24 +9,24 @@ import warnings
 import logging
 
 #--Debuggin setting
-#General logger
-logger = iniLogger('GM.log', extrah) if 'logger' not in globals() else logger
-
-#CSV logger
-logger_csv = logging.getLogger('csv')
-formatter = logging.Formatter('%(message)s')
-fh = logging.FileHandler('../log/GM.csv', mode='w+')
-fh.setFormatter(formatter)
-logger_csv.addHandler(fh)
-
-logger_csv.info('\"test tile is like this\", 35, 26, 55')
-
 #Markers
-_currentData = ''
 DEBUG = False
+_currentData = ''
+
+#Loggers
+logger = iniLogger('main', 'main.log', _console=True) if 'logger' not in globals() else logger
+if 'logger_metric' not in globals():
+    logger_metric = iniLogger('metric', 'metric.csv', _console=False)
+    logger_metric.info(', '.join(['title', 'MSE', 'cor', 'rho']))
+
+if 'logger_weight' not in globals():
+    logger_weight = iniLogger('weight', 'weight.csv', _console=False)
+    logger_metric.info(', '.join(['title', 'm_a', 'n_a', 'm_b', 'n_b', 'c']))
 
 #Suppress warning due to tf gather
 if not DEBUG: warnings.filterwarnings("ignore")
+
+
 
 
 '''
@@ -77,9 +77,9 @@ def gen_preprocessing_kFold(foldId, _marker):
     prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan)
 
     #Log
-    _currentData = 'fold #{}/{}, set {}.'.format(foldId + 1, K_FOLD, _marker.upper())
+    _currentData = '#{}/{}, {}'.format(foldId + 1, K_FOLD, _marker)
     logger.debug('-' * 60)
-    logger.debug('Now using ' + _currentData)
+    logger.debug('Now using fold ' + _currentData + ' set.')
 
 
 
@@ -300,9 +300,9 @@ def gen_npDataset(m_dists, n_dists, _cf, _negSim, _colMask):
 def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=0, lRate=0.5, batchSize=-1, _negSim=None, _colMask=False, _shuffle=False, _graph=False):
 
     #--Log
-    title += ' (${}, nRef={}, lRate={}, bSize={}) ({})'.format(exp, nRef, lRate, batchSize, _currentData)
+    title += ' (${}, nRef={}, lRate={}, bSize={})'.format(exp, nRef, lRate, batchSize)
     logger.info('-' * 60)
-    logger.info(title)
+    logger.info('{} ({})'.format(title, _currentData))
 
 
     #--Initialization
@@ -400,7 +400,7 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
     costs = []
 
     with tf.Session() as sess:
-
+        
         #Initialize vars/restore from checkpoint
         if globalStep == 0: sess.run(init)
         else: saver.restore(sess, './../data/checkpoint/emb-update-{}'.format(globalStep))
@@ -437,20 +437,27 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
                 #Tally the cost
                 cost_epoch += cost_batch
 
-            if ep % 1 == 0: #For graphing
+            #Log console
+            #For graphing
+            if ep % 1 == 0: 
                 costs.append(cost_epoch)
 
-            if ep >= 5: #For convergence termination
+            #For convergence termination
+            if ep >= 5:
                 if sum(abs(np.array(costs[-4:-1]) - np.array(costs[-3:]))) <= 0.3:
                     logger.info('Cost after epoch %i: %f' % (ep, cost_epoch))
                     break
 
-            if ep % 10 == 0: #For logging cost progress
-                logger.debug('Cost after epoch %i: %f' % (ep, cost_epoch))
-            
-            if ep + 1 == nEpoch: #Dealing with early termination
-                logger.info('Failed to converge. Terminated with cost after {} epochs: {}'.format(nEpoch, cost_epoch))
+            #Dealing with early termination
+            if ep + 1 == nEpoch:
+                logger.info('Cost after epoch %i: %f' % (ep, cost_epoch))
+                logger.info('Failed to converge.')
+                break
 
+            #For logging cost progress
+            if ep % 10 == 0:
+                logger.info('Cost after epoch %i: %f' % (ep, cost_epoch))
+            
         #Graphing the change of the costs
         if _graph:
             plt.plot(np.squeeze(costs))
@@ -461,14 +468,21 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
             plt.close()
 
         #Output
-        output = sess.run({'m_a': m_a.reshape(-1), 'n_a': n_a.reshape(-1), 'm_b': m_b.reshape(-1), 'n_b': n_b.reshape(-1), 'c': [c]})
+        #Save training status
+        # saver.save(sess, './../data/checkpoint/gen_weight_{}'.format(title), global_step=globalStep + nEpoch)
+
+        #Output weight
+        output = sess.run({'m_a': tf.reshape(m_a, [-1]), 'n_a': tf.reshape(n_a,[-1]), 'm_b': tf.reshape(m_b, [-1]), 'n_b': tf.reshape(n_b, [-1]), 'c': [c]})
         logger.info('m_a: ' + str(list(output['m_a'])))
         logger.info('n_a: ' + str(list(output['n_a'])))
         logger.info('m_b: ' + str(list(output['m_b'])))
         logger.info('n_b: ' + str(list(output['n_b'])))
         logger.info('c: ' + str(list(output['c'])))
 
-        # saver.save(sess, './../data/checkpoint/gen_weight_{}'.format(title), global_step=globalStep + nEpoch)
+        #Log csv
+        #Title, m_a, n_a, m_b, n_b, c
+        weights_str = [str(list(output['m_a'])), str(list(output['n_a'])), str(list(output['m_b'])), str(list(output['n_b'])), str(list(output['c']))]
+        logger_weight.info(', '.join(['{} ({})'.format(title, _currentData), *weights_str]))
 
         #Format for plugging into the model function
         output['exp'] = exp
@@ -579,7 +593,12 @@ def gen_model(exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _n
     predictions_gen = predictions_nan[isnan_inv]
 
     #Evaluation
-    metrics_gen = evalModel(predictions_gen, truths_gen, nMN, title=title, graph=graph, logger=logger.info)
+    metrics_gen = evalModel(predictions_gen, truths_gen, nMN, title='{} ({})'.format(title, _currentData), graph=graph, logger=logger.info)
+
+    #Log csv
+    #Title, MSE, cor, rho
+    metrics_gen_str = map(str, metrics_gen)
+    logger_metric.info(', '.join(['{} ({})'.format(title, _currentData), *metrics_gen_str]))
 
     #Return the predicted value
     return predictions_gen, metrics_gen
@@ -630,6 +649,7 @@ paras = {
 
 
 #--Learn weights and evaluate with each fold
+para_dic = dict.fromkeys(paras['para_key'])
 for exp in paras['exp']:
 
     #Log title
@@ -643,7 +663,6 @@ for exp in paras['exp']:
         for i in range(K_FOLD):
             #Using training set to learn the weights
             gen_preprocessing_kFold(i + 1, 'training')
-            para_dic = dict.fromkeys(paras['para_key'])
             para_dic.update(zip(paras['para_key'], para))
             output = gen_learnWeight_kFold(exp=exp, **para_dic)
 
@@ -657,9 +676,14 @@ for exp in paras['exp']:
 
         #Log the performance of each para combination by averaging performance of all folds 
         logger.info('-' * 60)
+        logger.info('Combination Summary')
         logger.info('-' * 60)
         logger.info(output['title'])
         logger.info('Average MSE = {}'.format(np.mean(kMse)))
         logger.info('Average correlation = {}'.format(np.mean(kCor)))
         logger.info('Average rankCorrelation = {}'.format(np.mean(kRho)))
         logger.info('-' * 60)
+
+        #Log csv
+        #Title, MSE, cor, rho
+        logger_metric.info(', '.join(['\"{}\"'.format(output['title']), str(np.mean(kMse)), str(np.mean(kCor)), str(np.mean(kRho))]))

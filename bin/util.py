@@ -121,28 +121,27 @@ def kFold(k, nMN, seed=1):
     
 
 #--Logger
-def iniLogger(fileName):
+def iniLogger(loggerName, fileName, _console):
 
     #Use the default logger
-    logger = logging.getLogger()
+    logger = logging.getLogger(loggerName)
     logger.setLevel(logging.DEBUG)
 
-    #Create file handler
+    #Create formatter
+    formatter = logging.Formatter('%(message)s')
+
+    #Create file handler and add to logger
     fh = logging.FileHandler('../log/{}'.format(fileName), mode='w+')
     fh.setLevel(logging.INFO)
-    
-    #Create console handler
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
-    
-    #Create formatter and add it to the handlers
-    formatter = logging.Formatter('%(message)s')
-    ch.setFormatter(formatter)
     fh.setFormatter(formatter)
-
-    #'Add the handlers to logger
-    logger.addHandler(ch)
     logger.addHandler(fh)
+    
+    #Create console handler and add to logger
+    if _console:
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.DEBUG)
+        ch.setFormatter(formatter)
+        logger.addHandler(ch)
 
     return logger
 
