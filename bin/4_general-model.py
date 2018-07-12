@@ -21,7 +21,7 @@ if 'logger_metric' not in globals():
 
 if 'logger_weight' not in globals():
     logger_weight = iniLogger('weight', 'weight.csv', _console=False)
-    logger_metric.info(', '.join(['title', 'm_a', 'n_a', 'm_b', 'n_b', 'c']))
+    logger_weight.info(', '.join(['title', 'm_a', 'n_a', 'm_b', 'n_b', 'c']))
 
 #Suppress warning due to tf gather
 if not DEBUG: warnings.filterwarnings("ignore")
@@ -503,20 +503,22 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
         return output
 
 
-DEBUG = False
-#--Training and pipeline evaluate
-#u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
-output_1 = gen_learnWeight(exp='1', m_dists=[u_dist_person, u_dist_sat, u_dist_demo], n_dists=[dist_triplet, dist_review, dist_genre], _cf=True, nRef=-1, nEpoch=200, lRate=0.01, batchSize=-1, title='All')
-predictions_1, metrics_1 = gen_model(**output_1)
-output_2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[], _cf=True, nRef=-1, nEpoch=100, lRate=0.01, batchSize=-1, title='CF')
-predictions_2, metrics_2 = gen_model(**output_2)
+if __name__ != '__main__': #Manually execute when using Jupyter
 
-output_base0 = gen_learnWeight(exp='1', m_dists=[], n_dists=[], _cf=False, nRef=-1, nEpoch=100, lRate=1, batchSize=-1, title='Base_none')
-predictions_base0, metrics_base0 = gen_model(**output_base0)
-output_base1 = gen_learnWeight(exp='1', m_dists=[np.eye((nM))], n_dists=[], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_eyeM')
-predictions_base1, metrics_base1 = gen_model(**output_base1)
-output_base2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[np.eye((nN))], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_eyeN')
-predictions_base2, metrics_base2 = gen_model(**output_base2)
+    DEBUG = False
+    #--Training and pipeline evaluate
+    #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
+    output_1 = gen_learnWeight(exp='1', m_dists=[u_dist_person, u_dist_sat, u_dist_demo], n_dists=[dist_triplet, dist_review, dist_genre], _cf=True, nRef=-1, nEpoch=200, lRate=0.01, batchSize=-1, title='All')
+    predictions_1, metrics_1 = gen_model(**output_1)
+    output_2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[], _cf=True, nRef=-1, nEpoch=100, lRate=0.01, batchSize=-1, title='CF')
+    predictions_2, metrics_2 = gen_model(**output_2)
+
+    output_base0 = gen_learnWeight(exp='1', m_dists=[], n_dists=[], _cf=False, nRef=-1, nEpoch=100, lRate=1, batchSize=-1, title='Base_none')
+    predictions_base0, metrics_base0 = gen_model(**output_base0)
+    output_base1 = gen_learnWeight(exp='1', m_dists=[np.eye((nM))], n_dists=[], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_eyeM')
+    predictions_base1, metrics_base1 = gen_model(**output_base1)
+    output_base2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[np.eye((nN))], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_eyeN')
+    predictions_base2, metrics_base2 = gen_model(**output_base2)
 
 
 
@@ -604,86 +606,90 @@ def gen_model(exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _n
     return predictions_gen, metrics_gen
 
 
-DEBUG = False
-#--Operations
-#Use nRef = -1 to employ all cells other than self
-#u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
-predictions_gen, metrics_gen = gen_model(exp='2', nRef=-1, m_dists=[np.ones((nM, nM))], n_dists=[np.ones((nN, nN))], _cf=False, m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='General model 1')
-predictions_gen, metrics_gen = gen_model(exp='1', nRef=-1, m_dists=[], n_dists=[], _cf=False, m_a=[1], n_a=[], m_b=[1], n_b=[], c=[0], title='General model 2')
+if __name__ != '__main__': #Manually execute when using Jupyter
+
+    DEBUG = False
+    #--Operations
+    #Use nRef = -1 to employ all cells other than self
+    #u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
+    predictions_gen, metrics_gen = gen_model(exp='2', nRef=-1, m_dists=[np.ones((nM, nM))], n_dists=[np.ones((nN, nN))], _cf=False, m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='General model 1')
+    predictions_gen, metrics_gen = gen_model(exp='1', nRef=-1, m_dists=[], n_dists=[], _cf=False, m_a=[1], n_a=[], m_b=[1], n_b=[], c=[0], title='General model 2')
 
 
 
 
-'''
-------------------------------------------------------------
-K-fold CV, comparing models
-------------------------------------------------------------
-'''
-#--Initialization
-#Acquire k-fold ids
-K_FOLD = 2
-id_train, id_test = kFold(K_FOLD, nMN_whole, seed=1)
+if __name__ != '__main__': #Manually execute when using Jupyter
+
+    '''
+    ------------------------------------------------------------
+    K-fold CV, comparing models
+    ------------------------------------------------------------
+    '''
+    #--Initialization
+    #Acquire k-fold ids
+    K_FOLD = 2
+    id_train, id_test = kFold(K_FOLD, nMN_whole, seed=1)
 
 
-#--Provide learning parameters
-#Common parameters
-gen_learnWeight_kFold = partial(gen_learnWeight, nRef=-1, nEpoch=30, lRate=0.1, batchSize=-1)
+    #--Provide learning parameters
+    #Common parameters
+    gen_learnWeight_kFold = partial(gen_learnWeight, nRef=-1, nEpoch=30, lRate=0.1, batchSize=-1)
 
-#Parameters to loop over
-#u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
-paras = {
-'exp': ['1'],
-# 'exp': ['1', '2', '2n', '3', '3n', '4', '4n'],
-'para_key': ['title', 'm_dists', 'n_dists', '_cf'],
-'para': [
-    ['Review', [], [dist_review], False],
-    # ['Sat', [u_dist_sat], [], False],
-    # ['Person', [u_dist_person], [], False],
-    # ['CF', [], [], True],
-    ['CF+review', [], [dist_review], True],
-    # ['CF+sat', [u_dist_sat], [], True],
-    # ['CF+person', [u_dist_person], [], True],
-    ['CF+sat+person+review', [u_dist_sat, u_dist_person], [dist_review], True]
-]
-}
+    #Parameters to loop over
+    #u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
+    paras = {
+    'exp': ['1'],
+    # 'exp': ['1', '2', '2n', '3', '3n', '4', '4n'],
+    'para_key': ['title', 'm_dists', 'n_dists', '_cf'],
+    'para': [
+        ['Review', [], [dist_review], False],
+        # ['Sat', [u_dist_sat], [], False],
+        # ['Person', [u_dist_person], [], False],
+        # ['CF', [], [], True],
+        ['CF+review', [], [dist_review], True],
+        # ['CF+sat', [u_dist_sat], [], True],
+        # ['CF+person', [u_dist_person], [], True],
+        ['CF+sat+person+review', [u_dist_sat, u_dist_person], [dist_review], True]
+    ]
+    }
 
 
-#--Learn weights and evaluate with each fold
-para_dic = dict.fromkeys(paras['para_key'])
-for exp in paras['exp']:
+    #--Learn weights and evaluate with each fold
+    para_dic = dict.fromkeys(paras['para_key'])
+    for exp in paras['exp']:
 
-    #Log title
-    logger.info('=' * 60)
-    logger.info('Expression ' + exp)
+        #Log title
+        logger.info('=' * 60)
+        logger.info('Expression ' + exp)
 
-    for para in paras['para']:
-        #Record metrics of a particular para combination
-        kMse, kCor, kRho = ([] for i in range(3))
-        
-        for i in range(K_FOLD):
-            #Using training set to learn the weights
-            gen_preprocessing_kFold(i + 1, 'training')
-            para_dic.update(zip(paras['para_key'], para))
-            output = gen_learnWeight_kFold(exp=exp, **para_dic)
+        for para in paras['para']:
+            #Record metrics of a particular para combination
+            kMse, kCor, kRho = ([] for i in range(3))
+            
+            for i in range(K_FOLD):
+                #Using training set to learn the weights
+                gen_preprocessing_kFold(i + 1, 'training')
+                para_dic.update(zip(paras['para_key'], para))
+                output = gen_learnWeight_kFold(exp=exp, **para_dic)
 
-            #Using test set to observe the performance
-            gen_preprocessing_kFold(i + 1, 'test')
-            _, metrics = gen_model(**output)
+                #Using test set to observe the performance
+                gen_preprocessing_kFold(i + 1, 'test')
+                _, metrics = gen_model(**output)
 
-            kMse.append(metrics[0])
-            kCor.append(metrics[1])
-            kRho.append(metrics[2])
+                kMse.append(metrics[0])
+                kCor.append(metrics[1])
+                kRho.append(metrics[2])
 
-        #Log the performance of each para combination by averaging performance of all folds 
-        logger.info('-' * 60)
-        logger.info('Combination Summary')
-        logger.info('-' * 60)
-        logger.info(output['title'])
-        logger.info('Average MSE = {}'.format(np.mean(kMse)))
-        logger.info('Average correlation = {}'.format(np.mean(kCor)))
-        logger.info('Average rankCorrelation = {}'.format(np.mean(kRho)))
-        logger.info('-' * 60)
+            #Log the performance of each para combination by averaging performance of all folds 
+            logger.info('-' * 60)
+            logger.info('Combination Summary')
+            logger.info('-' * 60)
+            logger.info(output['title'])
+            logger.info('Average MSE = {}'.format(np.mean(kMse)))
+            logger.info('Average correlation = {}'.format(np.mean(kCor)))
+            logger.info('Average rankCorrelation = {}'.format(np.mean(kRho)))
+            logger.info('-' * 60)
 
-        #Log csv
-        #Title, MSE, cor, rho
-        logger_metric.info(', '.join(['\"{}\"'.format(output['title']), str(np.mean(kMse)), str(np.mean(kCor)), str(np.mean(kRho))]))
+            #Log csv
+            #Title, MSE, cor, rho
+            logger_metric.info(', '.join(['\"{}\"'.format(output['title']), str(np.mean(kMse)), str(np.mean(kCor)), str(np.mean(kRho))]))

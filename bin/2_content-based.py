@@ -129,30 +129,32 @@ def cRec(pref_nan, v_dist, m, n, nRef, mode, ifRand):
 
 
 
-'''
-------------------------------------------------------------
-Models
+if __name__ != '__main__': #Manually execute when using Jupyter
 
-- Note the true pref using here gets its own demean and is supposed to be revised
-------------------------------------------------------------
-'''
-#--Leave-one-out cRec implementation
-def implementation_c(nRef, ifRand=False, graph=False):
-    
-    #Parameters
-    nRef, mode = (nRef, '0')
+    '''
+    ------------------------------------------------------------
+    Models
 
-    #Prediction
-    predictions_c = recLoo(recFunc=cRec, dist=dist_review, nRef=nRef, mode=mode, ifRand=ifRand)
+    - Note the true pref using here gets its own demean and is supposed to be revised
+    ------------------------------------------------------------
+    '''
+    #--Leave-one-out cRec implementation
+    def implementation_c(nRef, ifRand=False, graph=False):
+        
+        #Parameters
+        nRef, mode = (nRef, '0')
 
-    #Evaluation
-    mse_c, cor_c, rho_c = evalModel(predictions_c, prefs, nMN, title='CRec mode {} (reference = {})'.format(mode, nRef), graph=graph)
+        #Prediction
+        predictions_c = recLoo(recFunc=cRec, dist=dist_review, nRef=nRef, mode=mode, ifRand=ifRand)
 
-    #Return the predicted value
-    return predictions_c, cor_c
+        #Evaluation
+        mse_c, cor_c, rho_c = evalModel(predictions_c, prefs, nMN, title='CRec mode {} (reference = {})'.format(mode, nRef), graph=graph)
 
-#Implement
-predictions_c, _ = implementation_c(5, graph=True)
+        #Return the predicted value
+        return predictions_c, cor_c
 
-#Implement with different numbers of reference
-multiImplement(np.arange(1, 13), implementation_c, nRand=30, titleLabel='Content-based')
+    #Implement
+    predictions_c, _ = implementation_c(5, graph=True)
+
+    #Implement with different numbers of reference
+    multiImplement(np.arange(1, 13), implementation_c, nRand=30, titleLabel='Content-based')
