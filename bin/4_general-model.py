@@ -11,6 +11,7 @@ import logging
 #--Debuggin setting
 #Markers
 DEBUG = False
+PRE_DE = True
 _currentData = ''
 
 #Loggers
@@ -36,7 +37,7 @@ Preference data
 '''
 #--Preprocessing pref data
 #Read from file, processing without folds
-pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
+pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=PRE_DE)
 
 #Number of example of the entire data set
 nMN_whole = nMN
@@ -60,7 +61,7 @@ def gen_preprocessing_kFold(foldId, _marker):
     global _currentData
 
     #Reset data
-    pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False)
+    pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=PRE_DE)
     naniloc_inv = np.where(isnan_inv)
 
     #Test set blanks training set ids
@@ -207,11 +208,12 @@ def gen_pref8mask(m, n, _colMask):
     if _colMask: pref_train[:, n] = np.nan
     
     #Adjust the true preference by the col and row effects
-    mMean, nMean = getMean(pref_train)
-    truth -= mMean[m] + nMean[n]
+    if not PRE_DE:
+        mMean, nMean = getMean(pref_train)
+        truth -= mMean[m] + nMean[n]
 
     #Impute nan with total mean and adjust by column and row effects (demean)
-    pref_train = imputation(pref_train)
+    pref_train = imputation(pref_train, PRE_DE)
 
     #--Mask
     #Remove self from the matrix 
@@ -481,8 +483,9 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
 
         #Log csv
         #Title, m_a, n_a, m_b, n_b, c
-        weights_str = [str(list(output['m_a'])), str(list(output['n_a'])), str(list(output['m_b'])), str(list(output['n_b'])), str(list(output['c']))]
-        logger_weight.info(', '.join(['{} ({})'.format(title, _currentData), *weights_str]))
+        tranWeight = lambda x: '{}'.format(str(list(x)).strip('[]').replace(', ', '/'))
+        weights_str = map(tranWeight, [output['m_a'], output['n_a'], output['m_b'], output['n_b'], output['c']])
+        logger_weight.info(', '.join(['\"{} ({})\"'.format(title, _currentData), *weights_str]))
 
         #Format for plugging into the model function
         output['exp'] = exp
@@ -513,11 +516,11 @@ if __name__ != '__main__': #Manually execute when using Jupyter
     output_2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[], _cf=True, nRef=-1, nEpoch=100, lRate=0.01, batchSize=-1, title='CF')
     predictions_2, metrics_2 = gen_model(**output_2)
 
-    output_base0 = gen_learnWeight(exp='1', m_dists=[], n_dists=[], _cf=False, nRef=-1, nEpoch=100, lRate=1, batchSize=-1, title='Base_none')
+    output_base0 = gen_learnWeight(exp='1', m_dists=[np.ones((nM, nM)) * 2], n_dists=[np.ones((nN, nN)) * 2], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_none')
     predictions_base0, metrics_base0 = gen_model(**output_base0)
-    output_base1 = gen_learnWeight(exp='1', m_dists=[np.eye((nM))], n_dists=[], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_eyeM')
+    output_base1 = gen_learnWeight(exp='1', m_dists=[np.ones((nM, nM)) * 2], n_dists=[], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_eyeN')
     predictions_base1, metrics_base1 = gen_model(**output_base1)
-    output_base2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[np.eye((nN))], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_eyeN')
+    output_base2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[np.ones((nN, nN)) * 2], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_eyeM')
     predictions_base2, metrics_base2 = gen_model(**output_base2)
 
 
@@ -600,7 +603,7 @@ def gen_model(exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _n
     #Log csv
     #Title, MSE, cor, rho
     metrics_gen_str = map(str, metrics_gen)
-    logger_metric.info(', '.join(['{} ({})'.format(title, _currentData), *metrics_gen_str]))
+    logger_metric.info(', '.join(['\"{} ({})\"'.format(title, _currentData), *metrics_gen_str]))
 
     #Return the predicted value
     return predictions_gen, metrics_gen
@@ -627,29 +630,31 @@ if __name__ != '__main__': #Manually execute when using Jupyter
     '''
     #--Initialization
     #Acquire k-fold ids
-    K_FOLD = 2
+    K_FOLD = 5
     id_train, id_test = kFold(K_FOLD, nMN_whole, seed=1)
 
 
     #--Provide learning parameters
     #Common parameters
-    gen_learnWeight_kFold = partial(gen_learnWeight, nRef=-1, nEpoch=30, lRate=0.1, batchSize=-1)
+    gen_learnWeight_kFold = partial(gen_learnWeight, nRef=2, nEpoch=1000, lRate=0.1, batchSize=-1)
 
     #Parameters to loop over
     #u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
     paras = {
-    'exp': ['1'],
     # 'exp': ['1', '2', '2n', '3', '3n', '4', '4n'],
+    'exp': ['1', '2'],
     'para_key': ['title', 'm_dists', 'n_dists', '_cf'],
     'para': [
-        ['Review', [], [dist_review], False],
+        ['EyeM', [], [np.ones((nN, nN))], False],
+        ['EyeN', [np.ones((nM, nM))], [], False],
+        ['Review', [], [dist_review], False]
         # ['Sat', [u_dist_sat], [], False],
         # ['Person', [u_dist_person], [], False],
         # ['CF', [], [], True],
-        ['CF+review', [], [dist_review], True],
+        # ['CF+review', [], [dist_review], True],
         # ['CF+sat', [u_dist_sat], [], True],
         # ['CF+person', [u_dist_person], [], True],
-        ['CF+sat+person+review', [u_dist_sat, u_dist_person], [dist_review], True]
+        # ['CF+sat+person+review', [u_dist_sat, u_dist_person], [dist_review], True]
     ]
     }
 

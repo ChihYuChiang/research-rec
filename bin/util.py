@@ -155,18 +155,31 @@ Common functions
 '''
 #--Preprocess data
 #Raw data + preprocessing wrapper
-def preprocessing(description):
+def preprocessing(description, _preDe=False):
 
-    #Load data
-    pref_raw = np.genfromtxt(r'../data/raw_preference_combined.csv', delimiter=',', skip_header=1)
-    nM_raw, nN_raw = pref_raw.shape
+    #Whether to use the preliminary regression demean
+    if _preDe:
+        #Load data (long form)
+        rowName = pd.read_csv(r'../data/raw/raw_preference.csv', ).ResponseId.unique()
+        pref_raw = pd.read_csv(r'../data/res_demean.csv')
 
-    #Combine sub-measurements to acquire final matrix
-    #Get specific rating: pref_nan[rater, game]
-    pref_nan = (pref_raw[:, np.arange(0, nN_raw, 3)] + pref_raw[:, np.arange(1, nN_raw, 3)] + pref_raw[:, np.arange(2, nN_raw, 3)]) / 3
+        #Produce the item-rater matrix
+        pref_nan = pd.DataFrame(index=rowName, columns=range(1, 51))
+        for _, r in pref_raw.iterrows():
+            pref_nan.set_value(r.respondent, r.core_id, r.res)
+        pref_nan = pref_nan.as_matrix()
+
+    else:
+        #Load data
+        pref_raw = np.genfromtxt(r'../data/raw_preference_combined.csv', delimiter=',', skip_header=1)
+        nM_raw, nN_raw = pref_raw.shape
+
+        #Combine sub-measurements to acquire final matrix
+        #Get specific rating: pref_nan[rater, game]
+        pref_nan = (pref_raw[:, np.arange(0, nN_raw, 3)] + pref_raw[:, np.arange(1, nN_raw, 3)] + pref_raw[:, np.arange(2, nN_raw, 3)]) / 3
 
     #Preprocessing
-    prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan)
+    prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan, _preDe)
 
     #Data description
     if description:
@@ -177,7 +190,7 @@ def preprocessing(description):
     return pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
 
 #Return processed matrix, matrix shape, reversed nan index
-def preprocessing_core(pref_nan):
+def preprocessing_core(pref_nan, _preDe=False):
 
     #Get final data shape
     nM, nN = pref_nan.shape
@@ -192,8 +205,13 @@ def preprocessing_core(pref_nan):
     #Total num of rating (!= nM * nN)
     nMN = len(np.where(isnan_inv)[0])
 
-    #Subtract column and row effects for pref matrix and makes it long-form
-    prefs = deMean(pref_nan)[isnan_inv]
+    if _preDe:
+        #It was demeaned beforehand
+        prefs = pref_nan[isnan_inv]
+
+    else:
+        #Subtract column and row effects for pref matrix and makes it long-form
+        prefs = deMean(pref_nan)[isnan_inv]
 
     return prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
 
