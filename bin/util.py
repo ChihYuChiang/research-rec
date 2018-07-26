@@ -117,6 +117,9 @@ def kFold(k, nMN, seed=1):
     id_test = [rMN[anchor[i]:(anchor[i + 1] if i + 1 != len(anchor) else None)] for i in range(len(anchor))]
     id_train = [np.setdiff1d(rMN, id_test[i]) for i in range(len(id_test))]
 
+    #Deal with 1 fold (using entire dataset to train and test)
+    if k == 1: id_train = id_test
+
     return id_train, id_test
     
 
@@ -167,7 +170,7 @@ def preprocessing(description, _preDe=False):
         pref_nan = pd.DataFrame(index=rowName, columns=range(1, 51))
         for _, r in pref_raw.iterrows():
             pref_nan.set_value(r.respondent, r.core_id, r.res)
-        pref_nan = pref_nan.as_matrix()
+        pref_nan = pref_nan.values.astype(np.float32)
 
     else:
         #Load data

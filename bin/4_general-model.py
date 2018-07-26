@@ -38,6 +38,7 @@ Preference data
 #--Preprocessing pref data
 #Read from file, processing without folds
 pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=PRE_DE)
+pref_pre_allmean = pd.read_csv(r'../data/res_demean.csv').allmean[0]
 
 #Number of example of the entire data set
 nMN_whole = nMN
@@ -56,26 +57,30 @@ def gen_preprocessing_kFold(foldId, _marker):
     #Fold id 1 -> 0
     foldId -= 1
     
-    #Manage global directly
-    global pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
-    global _currentData
+    #K_FOLD == 1, test set == training set
+    if K_FOLD > 1: 
 
-    #Reset data
-    pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=PRE_DE)
-    naniloc_inv = np.where(isnan_inv)
+        #Manage global directly
+        global pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
+        global _currentData
 
-    #Test set blanks training set ids
-    if _marker == 'test':
-        nanCell = [np.take(naniloc_inv[0], id_train[foldId]), np.take(naniloc_inv[1], id_train[foldId])]
-        pref_nan[nanCell] = np.nan
+        #Reset data
+        pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=PRE_DE)
+        naniloc_inv = np.where(isnan_inv)
 
-    #Training set blanks test set ids
-    if _marker == 'training':
-        nanCell = [np.take(naniloc_inv[0], id_test[foldId]), np.take(naniloc_inv[1], id_test[foldId])]
-        pref_nan[nanCell] = np.nan
+        
+        #Test set blanks training set ids
+        if _marker == 'test':
+            nanCell = [np.take(naniloc_inv[0], id_train[foldId]), np.take(naniloc_inv[1], id_train[foldId])]
+            pref_nan[nanCell] = np.nan
 
-    #Update global vars
-    prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan)
+        #Training set blanks test set ids
+        if _marker == 'training':
+            nanCell = [np.take(naniloc_inv[0], id_test[foldId]), np.take(naniloc_inv[1], id_test[foldId])]
+            pref_nan[nanCell] = np.nan
+
+        #Update global vars
+        prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan, _preDe=PRE_DE)
 
     #Log
     _currentData = '#{}/{}, {}'.format(foldId + 1, K_FOLD, _marker)
@@ -213,7 +218,7 @@ def gen_pref8mask(m, n, _colMask):
         truth -= mMean[m] + nMean[n]
 
     #Impute nan with total mean and adjust by column and row effects (demean)
-    pref_train = imputation(pref_train, PRE_DE)
+    pref_train = imputation(pref_train, pref_pre_allmean)
 
     #--Mask
     #Remove self from the matrix 
@@ -630,30 +635,31 @@ if __name__ != '__main__': #Manually execute when using Jupyter
     '''
     #--Initialization
     #Acquire k-fold ids
-    K_FOLD = 5
+    K_FOLD = 1
     id_train, id_test = kFold(K_FOLD, nMN_whole, seed=1)
 
 
     #--Provide learning parameters
     #Common parameters
-    gen_learnWeight_kFold = partial(gen_learnWeight, nRef=2, nEpoch=1000, lRate=0.1, batchSize=-1)
+    gen_learnWeight_kFold = partial(gen_learnWeight, nRef=-1, nEpoch=1000, lRate=0.1, batchSize=-1)
 
     #Parameters to loop over
     #u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
     paras = {
     # 'exp': ['1', '2', '2n', '3', '3n', '4', '4n'],
-    'exp': ['1', '2'],
+    'exp': ['1', '2', '3', '4'],
     'para_key': ['title', 'm_dists', 'n_dists', '_cf'],
     'para': [
         ['EyeM', [], [np.ones((nN, nN))], False],
         ['EyeN', [np.ones((nM, nM))], [], False],
-        ['Review', [], [dist_review], False]
+        ['Review', [], [dist_review], False],
         # ['Sat', [u_dist_sat], [], False],
-        # ['Person', [u_dist_person], [], False],
-        # ['CF', [], [], True],
-        # ['CF+review', [], [dist_review], True],
+        ['Person', [u_dist_person], [], False],
+        ['CF', [], [], True],
+        ['CF+review', [], [dist_review], True],
         # ['CF+sat', [u_dist_sat], [], True],
-        # ['CF+person', [u_dist_person], [], True],
+        ['CF+person', [u_dist_person], [], True],
+        ['CF+person+review', [u_dist_person], [dist_review], True]
         # ['CF+sat+person+review', [u_dist_sat, u_dist_person], [dist_review], True]
     ]
     }
