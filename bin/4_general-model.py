@@ -451,7 +451,7 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
 
             #For convergence termination
             if ep >= 5:
-                if sum(abs(np.array(costs[-4:-1]) - np.array(costs[-3:]))) <= 0.3:
+                if sum(abs(np.array(costs[-4:-1]) - np.array(costs[-3:]))) <= 0.03:
                     logger.info('Cost after epoch %i: %f' % (ep, cost_epoch))
                     break
 

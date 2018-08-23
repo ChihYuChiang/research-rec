@@ -149,6 +149,48 @@ def iniLogger(loggerName, fileName, _console):
     return logger
 
 
+#--nan imputation by total mean and adjust by column and row effects
+#Return imputed matrix
+def imputation(matrix, imValue=None):
+    
+    #Find nan iloc
+    naniloc = np.where(np.isnan(matrix))
+
+    #Insert appropriate value into the matrix where is nan
+    #Impute a predefined value
+    if imValue: matrix[naniloc] = imValue
+        
+    #Impute overall mean
+    else:
+        #Compute column and row effect
+        mMean, nMean = getMean(matrix)
+
+        #np.take is faster than fancy indexing i.e. nMean[[1, 3, 5]]
+        matrix[naniloc] = np.nanmean(matrix) + np.take(nMean, naniloc[1]) + np.take(mMean, naniloc[0])
+
+        #Substract mean, col and row effects from pref
+        matrix = deMean(matrix, mMean, nMean)
+
+    return matrix
+
+
+#--SVD
+#Return user pair-wise distance matrix
+def SVD(matrix, nf=10):
+
+    #Complete SVD
+    #Result shape: (nM, nM) (nN, ) (nN, nN)
+    u, s, vh = np.linalg.svd(matrix)
+
+    #Truncate SVD (use t largest singular values)
+    u_t = u[:, 0:nf]
+
+    #Distance matrix
+    u_dist = sp.spatial.distance.squareform(sp.spatial.distance.pdist(u_t, 'cosine'))
+
+    return u_dist
+
+
 
 
 '''

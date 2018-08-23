@@ -5,52 +5,41 @@ def gen_preprocessing_kFold(foldId, _marker):
 
     #Fold id 1 -> 0
     foldId -= 1
-    
-    #K_FOLD == 1, test set == training set
-    if K_FOLD > 1: 
 
-        #Manage global directly
-        global pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
-        global _currentData
+    #Reset data
+    pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=True)
+    naniloc_inv = np.where(isnan_inv)
 
-        #Reset data
-        pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=PRE_DE)
-        naniloc_inv = np.where(isnan_inv)
+    #Test set blanks training set ids
+    if _marker == 'test':
+        nanCell = [np.take(naniloc_inv[0], id_X[foldId]), np.take(naniloc_inv[1], id_X[foldId])]
+        pref_nan[nanCell] = np.nan
 
-        
-        #Test set blanks training set ids
-        if _marker == 'test':
-            nanCell = [np.take(naniloc_inv[0], id_train[foldId]), np.take(naniloc_inv[1], id_train[foldId])]
-            pref_nan[nanCell] = np.nan
+    #Training set blanks test set ids
+    if _marker == 'training':
+        nanCell = [np.take(naniloc_inv[0], id_Y[foldId]), np.take(naniloc_inv[1], id_Y[foldId])]
+        pref_nan[nanCell] = np.nan
 
-        #Training set blanks test set ids
-        if _marker == 'training':
-            nanCell = [np.take(naniloc_inv[0], id_test[foldId]), np.take(naniloc_inv[1], id_test[foldId])]
-            pref_nan[nanCell] = np.nan
+    #Update vars
+    return (pref_nan, *preprocessing_core(pref_nan, _preDe=True))
 
-        #Update global vars
-        prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan, _preDe=PRE_DE)
-
-    #Log
-    _currentData = '#{}/{}, {}'.format(foldId + 1, K_FOLD, _marker)
-    logger.debug('-' * 60)
-    logger.debug('Now using fold ' + _currentData + ' set.')
 
 def gen_pref8mask(m, n, _colMask):
 
     #--Pref
-    #Use X
-    pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = data_X
-
-    #Get the truth
-    truth = pref_train[m, n]
-    
-    #--Mask
     #Use Y
     pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = data_Y
 
+    #Get the truth
+    truth = pref_nan[m, n]
+    
+
+    #--Mask
+    #Use X
+    pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = data_X
+
     #Mask the entire column (simulate a new product which has no rating)
-    if _colMask: pref_train[:, n] = np.nan
+    if _colMask: pref_nan[:, n] = np.nan
 
     #Get the mask
     isnan_inv_mn = isnan_inv.copy()
@@ -58,7 +47,8 @@ def gen_pref8mask(m, n, _colMask):
     #Remove the entire column from the matrix
     if _colMask: isnan_inv_mn[:, n] = False
 
-    return pref_train, isnan_inv_mn, truth
+
+    return pref_nan, isnan_inv_mn, truth
     
 
 #--Pre-removing col and row effects
@@ -66,8 +56,8 @@ def gen_pref8mask(m, n, _colMask):
 pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=True)
 
 
-#--Read in similarities and compute CF using all samples
-dist_cf = SVD(pref_nan, imValue=pd.read_csv(r'../data/res_demean.csv').allmean[0])
+#--Compute CF using all samples
+u_dist_cf = SVD(imputation(pref_nan, imValue=pd.read_csv(r'../data/res_demean.csv').allmean[0]))
 
 
 #--Prepare pref_train, mask, and the truth
@@ -86,7 +76,7 @@ data_Y = gen_preprocessing_kFold(foldId, 'test')
 pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = data_Y
 
 #u_dist_person  u_dist_sat  u_dist_demo  u_dist_cf  dist_triplet  dist_review  dist_genre
-output = gen_learnWeight(exp='1', m_dists=[u_dist_person, u_dist_sat, u_dist_demo], n_dists=[dist_triplet, dist_review, dist_genre], _cf=False, nRef=-1, nEpoch=200, lRate=0.01, batchSize=-1, title='All')
+output = gen_learnWeight(exp='1', m_dists=[u_dist_cf], n_dists=[], _cf=False, nRef=-1, nEpoch=50, lRate=0.01, batchSize=-1, title='All')
 predictions, metrics = gen_model(**output)
 
 
