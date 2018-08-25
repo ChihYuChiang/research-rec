@@ -31,7 +31,7 @@ People similarity
 person = np.genfromtxt(r'../data/personality_satisfaction.csv', delimiter=',', skip_header=1)
 
 #0:4 = personality; 5:7 = satisfaction
-u_dist_person = squareform(pdist(person[:, :5], 'cosine')) 
+u_dist_person = squareform(pdist(person[:, :5], 'cosine'))
 u_dist_sat = squareform(pdist(person[:, 5:], 'cosine'))
 
 

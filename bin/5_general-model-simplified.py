@@ -1,22 +1,29 @@
-#--Replace the original functions in 4.
-def gen_preprocessing_kFold(foldId, _marker):
-    assert foldId >= 0, 'Fold ID starts from 1.'
-    assert _marker in ['training', 'test'], 'Wrong marker.'
+'''
+------------------------------------------------------------
+Component functions
 
-    #Fold id 1 -> 0
+- Replace the original functions in 4.
+------------------------------------------------------------
+'''
+def gen_preprocessing_kFold(foldId, _marker):
+    assert _marker in ['X', 'Y'], 'Wrong marker.'
+
+    #Fold id 1 -> 0. Fold ID starts from 1.
     foldId -= 1
+
+    #Manage global directly
+    global pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
 
     #Reset data
     pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=True)
     naniloc_inv = np.where(isnan_inv)
 
-    #Test set blanks training set ids
-    if _marker == 'test':
+    #Blanks ids of the opposite markers
+    if _marker == 'Y':
         nanCell = [np.take(naniloc_inv[0], id_X[foldId]), np.take(naniloc_inv[1], id_X[foldId])]
         pref_nan[nanCell] = np.nan
 
-    #Training set blanks test set ids
-    if _marker == 'training':
+    if _marker == 'X':
         nanCell = [np.take(naniloc_inv[0], id_Y[foldId]), np.take(naniloc_inv[1], id_Y[foldId])]
         pref_nan[nanCell] = np.nan
 
@@ -40,17 +47,21 @@ def gen_pref8mask(m, n, _colMask):
 
     #Mask the entire column (simulate a new product which has no rating)
     if _colMask: pref_nan[:, n] = np.nan
-
-    #Get the mask
-    isnan_inv_mn = isnan_inv.copy()
     
     #Remove the entire column from the matrix
-    if _colMask: isnan_inv_mn[:, n] = False
+    if _colMask: isnan_inv[:, n] = False
 
 
-    return pref_nan, isnan_inv_mn, truth
+    return pref_nan, isnan_inv, truth
     
 
+
+
+'''
+------------------------------------------------------------
+Model
+------------------------------------------------------------
+'''
 #--Pre-removing col and row effects
 #Read from file, processing with all samples
 pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=True)
@@ -67,19 +78,30 @@ id_X, id_Y = kFold(10, nMN, seed=1)
 
 #Acquire X and Y
 foldId = 1
-data_X = gen_preprocessing_kFold(foldId, 'training')
-data_Y = gen_preprocessing_kFold(foldId, 'test')
+data_X = gen_preprocessing_kFold(foldId, 'X')
+data_Y = gen_preprocessing_kFold(foldId, 'Y')
 
 
 #--Predicting Y by X with sim combinations
 #Set global to Y
 pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = data_Y
 
+#Inherit
 #u_dist_person  u_dist_sat  u_dist_demo  u_dist_cf  dist_triplet  dist_review  dist_genre
-output = gen_learnWeight(exp='1', m_dists=[u_dist_cf], n_dists=[], _cf=False, nRef=-1, nEpoch=50, lRate=0.01, batchSize=-1, title='All')
+output = gen_learnWeight(exp='1', m_dists=[u_dist_cf], n_dists=[np.ones((nN, nN))], _cf=False, _colMask=False, nRef=-1, nEpoch=50, lRate=0.1, batchSize=-1, title='All')
 predictions, metrics = gen_model(**output)
 
+#Manual
+predictions, metrics = gen_model(exp='1', nRef=-1, m_dists=[], n_dists=[dist_review], _cf=False, _colMask=True, m_a=[1], n_a=[0.7599], m_b=[1], n_b=[1], c=[4.104656], title='General model 2')
 
+
+
+
+'''
+------------------------------------------------------------
+Comparing models
+------------------------------------------------------------
+'''
 #--Provide learning parameters
 #Common parameters
 gen_learnWeight_kFold = partial(gen_learnWeight, nRef=-1, nEpoch=1000, lRate=0.1, batchSize=-1)
