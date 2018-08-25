@@ -8,13 +8,16 @@ from util import *
 import warnings
 import logging
 
-#--Debuggin setting
-#Markers
+#--Setting
 DEBUG = False
 PRE_DE = True
-_currentData = ''
+options = SettingContainer(DEBUG=False, PRE_DE=True)
 
-#Loggers
+_currentData = ''
+markers = SettingContainer(_currentData='')
+
+
+#--Loggers
 logger = iniLogger('main', 'main.log', _console=True) if 'logger' not in globals() else logger
 if 'logger_metric' not in globals():
     logger_metric = iniLogger('metric', 'metric.csv', _console=False)
@@ -27,6 +30,9 @@ if 'logger_weight' not in globals():
 #Suppress warning due to tf gather
 if not DEBUG: warnings.filterwarnings("ignore")
 
+
+data = DataContainer(_preDe=True)
+data.listData()
 
 
 

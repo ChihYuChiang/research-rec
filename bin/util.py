@@ -3,15 +3,33 @@ import scipy as sp
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-import tensorflow as tf
+# import tensorflow as tf
 import logging
-
 
 '''
 ------------------------------------------------------------
 Generic functions
 ------------------------------------------------------------
 '''
+#--Universal container
+class UniversalContainer():
+
+    def listData(self):
+        data = [(item, getattr(self, item)) for item in dir(self) if not callable(getattr(self, item)) and not item.startswith("__")]
+        for item in data: print(item)
+
+    def listMethod(self):
+        print([item for item in dir(self) if callable(getattr(self, item)) and not item.startswith("__")])
+
+
+#--Setting container
+class SettingContainer(UniversalContainer):
+
+    def __init__(self, **kwarg):
+        for key, value in kwarg.items():
+            setattr(self, key, value)
+
+
 #--Flatten list (recursive)
 #Parameter: l, a list
 #Return: a flattened list as a generator
@@ -174,6 +192,20 @@ def imputation(matrix, imValue=None):
     return matrix
 
 
+
+
+'''
+------------------------------------------------------------
+Common functions
+------------------------------------------------------------
+'''
+#--Data container
+class DataContainer(UniversalContainer):
+
+    def __init__(self, _preDe=False):
+        self.pref_nan, self.prefs, self.nM, self.nN, self.nMN, self.isnan_inv, self.gameRatedByRater = preprocessing(description=False, _preDe=_preDe)
+
+
 #--SVD
 #Return user pair-wise distance matrix
 def SVD(matrix, nf=10):
@@ -191,13 +223,6 @@ def SVD(matrix, nf=10):
     return u_dist
 
 
-
-
-'''
-------------------------------------------------------------
-Common functions
-------------------------------------------------------------
-'''
 #--Preprocess data
 #Raw data + preprocessing wrapper
 def preprocessing(description, _preDe=False):
