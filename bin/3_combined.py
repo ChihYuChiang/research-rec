@@ -1,10 +1,5 @@
-import numpy as np
 from scipy.stats import t as dis_t
-import matplotlib.pyplot as plt
 from util import *
-
-
-
 
 '''
 ------------------------------------------------------------
@@ -87,8 +82,8 @@ cors_cf, cors_person, cors_en1, cors_en2 = ([] for i in range(4))
 w_cf, w_person, w_text = ([[], []] for i in range(3))
 
 predictions_text, _ = implementation_c(6) #Text
-N_REF = np.arange(1, 81)
-for i in N_REF:
+markers.N_REF = np.arange(1, 81)
+for i in markers.N_REF:
     predictions_cf, cor_cf = implementation_cf(i) #CF
     cors_cf.append(cor_cf)
 
@@ -108,10 +103,10 @@ for i in N_REF:
     w_text[1].append(w2[2])
 
 #Graph for the correlations
-plt.plot(N_REF, cors_cf, label='CF')
-plt.plot(N_REF, cors_person, label='Personality')
-plt.plot(N_REF, cors_en1, label='CF+Personality')
-plt.plot(N_REF, cors_en2, label='CF+Personality+Text')
+plt.plot(markers.N_REF, cors_cf, label='CF')
+plt.plot(markers.N_REF, cors_person, label='Personality')
+plt.plot(markers.N_REF, cors_en1, label='CF+Personality')
+plt.plot(markers.N_REF, cors_en2, label='CF+Personality+Text')
 plt.legend(loc=(1.03, 0.6))
 plt.title('Ensemble correlation by number of reference')
 plt.xlabel('Number of reference')
@@ -122,9 +117,9 @@ plt.close()
 #Graph for the ensemble weights
 #ax.axhline(0.5, ls='--', color='r')
 fig, ax = plt.subplots()
-ax.bar(N_REF, listEWiseOp(abs, w_cf[1]), label='CF')
-ax.bar(N_REF, listEWiseOp(abs, w_person[1]), bottom=listEWiseOp(abs, w_cf[1]), label='Personality')
-ax.bar(N_REF, listEWiseOp(abs, w_text[1]), bottom=[sum(x) for x in zip(listEWiseOp(abs, w_cf[1]), listEWiseOp(abs, w_person[1]))], label='Text')
+ax.bar(markers.N_REF, listEWiseOp(abs, w_cf[1]), label='CF')
+ax.bar(markers.N_REF, listEWiseOp(abs, w_person[1]), bottom=listEWiseOp(abs, w_cf[1]), label='Personality')
+ax.bar(markers.N_REF, listEWiseOp(abs, w_text[1]), bottom=[sum(x) for x in zip(listEWiseOp(abs, w_cf[1]), listEWiseOp(abs, w_person[1]))], label='Text')
 ax.legend(loc=(1.03, 0.6))
 ax.set(xlabel='Number of reference', ylabel='Weight proportion', title='Ensemble weight proportion by number of reference')
 plt.show()

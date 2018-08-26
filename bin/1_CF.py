@@ -1,14 +1,6 @@
-import numpy as np
 import random
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-from scipy.spatial.distance import pdist, squareform
 from functools import partial
 from util import *
-
-DEBUG = False
-
 
 '''
 ------------------------------------------------------------
@@ -125,7 +117,7 @@ def CF(pref_nan, u_dist, m, n, nRef, mode, ifRand):
 
     return prediction
 
-if DEBUG: CF(pref_nan, None, 2, 1, 10, '1', False)
+if options.DEBUG: CF(pref_nan, None, 2, 1, 10, '1', False)
 
 
 

@@ -1,23 +1,10 @@
-import numpy as np
 import math
 import re
-from scipy.stats import t as dis_t
-import matplotlib.pyplot as plt
-import seaborn as sns
 from util import *
 import warnings
-import logging
 
 #--Setting
-DEBUG = False
-PRE_DE = True
-options = SettingContainer(DEBUG=False, PRE_DE=True)
-
-_currentData = ''
-markers = SettingContainer(_currentData='')
-
-
-#--Loggers
+#Loggers
 logger = iniLogger('main', 'main.log', _console=True) if 'logger' not in globals() else logger
 if 'logger_metric' not in globals():
     logger_metric = iniLogger('metric', 'metric.csv', _console=False)
@@ -28,11 +15,11 @@ if 'logger_weight' not in globals():
     logger_weight.info(', '.join(['title', 'm_a', 'n_a', 'm_b', 'n_b', 'c']))
 
 #Suppress warning due to tf gather
-if not DEBUG: warnings.filterwarnings("ignore")
-
+if not options.DEBUG: warnings.filterwarnings("ignore")
 
 data = DataContainer(_preDe=True)
 data.listData()
+
 
 
 
@@ -43,7 +30,7 @@ Preference data
 '''
 #--Preprocessing pref data
 #Read from file, processing without folds
-pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=PRE_DE)
+pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=options.PRE_DE)
 pref_pre_allmean = pd.read_csv(r'../data/res_demean.csv').allmean[0]
 
 #Number of example of the entire data set
@@ -71,7 +58,7 @@ def gen_preprocessing_kFold(foldId, _marker):
         global _currentData
 
         #Reset data
-        pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=PRE_DE)
+        pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=options.PRE_DE)
         naniloc_inv = np.where(isnan_inv)
 
         
@@ -86,12 +73,12 @@ def gen_preprocessing_kFold(foldId, _marker):
             pref_nan[nanCell] = np.nan
 
         #Update global vars
-        prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan, _preDe=PRE_DE)
+        prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan, _preDe=options.PRE_DE)
 
     #Log
     _currentData = '#{}/{}, {}'.format(foldId + 1, K_FOLD, _marker)
-    logger.debug('-' * 60)
-    logger.debug('Now using fold ' + _currentData + ' set.')
+    logger.DEBUG('-' * 60)
+    logger.DEBUG('Now using fold ' + _currentData + ' set.')
 
 
 
@@ -219,7 +206,7 @@ def gen_pref8mask(m, n, _colMask):
     if _colMask: pref_train[:, n] = np.nan
     
     #Adjust the true preference by the col and row effects
-    if not PRE_DE:
+    if not options.PRE_DE:
         mMean, nMean = getMean(pref_train)
         truth -= mMean[m] + nMean[n]
 
@@ -325,15 +312,15 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
     #Prepare raw data
     m_dists_processed, n_dists_processed, nMDist, nNDist = gen_iniData(m_dists, n_dists, _cf)
 
-    if DEBUG: print(m_dists_processed)
-    if DEBUG: print(n_dists_processed)
-    if DEBUG: print(nMDist)
-    if DEBUG: print(nNDist)
+    if options.DEBUG: print(m_dists_processed)
+    if options.DEBUG: print(n_dists_processed)
+    if options.DEBUG: print(nMDist)
+    if options.DEBUG: print(nNDist)
 
     dataset_np, nExample = gen_npDataset(m_dists_processed, n_dists_processed, _cf, _negSim, _colMask)
 
-    if DEBUG: print(dataset_np['m_sims'][0])
-    if DEBUG: print(dataset_np['n_sims'][0])
+    if options.DEBUG: print(dataset_np['m_sims'][0])
+    if options.DEBUG: print(dataset_np['n_sims'][0])
     
     if batchSize == -1: batchSize = nExample #An epoch as a batch
     eyeM_batch = np.broadcast_to(np.eye(nM).reshape(1, nM, nM), (batchSize, nM, nM))
@@ -430,7 +417,7 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
             n_id_ds: dataset_np['ns']
         })
 
-        if DEBUG: recordP = []
+        if options.DEBUG: recordP = []
 
         #Loop over number of epochs
         for ep in range(nEpoch):
@@ -444,8 +431,8 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
                 #Run operation
                 _, cost_batch, p = sess.run([opt, cost, pred])
 
-                if DEBUG and ep == nEpoch - 1: mt, nt, mnt = sess.run([m_sim_w, n_sim_w, mn_sim])
-                if DEBUG and ep == nEpoch - 1: recordP.append(p)
+                if options.DEBUG and ep == nEpoch - 1: mt, nt, mnt = sess.run([m_sim_w, n_sim_w, mn_sim])
+                if options.DEBUG and ep == nEpoch - 1: recordP.append(p)
 
                 #Tally the cost
                 cost_epoch += cost_batch
@@ -508,18 +495,18 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
         output['_colMask'] = _colMask
         output['_negSim'] = _negSim
 
-        if DEBUG: print('m_sim_w', mt[0])
-        if DEBUG: print('n_sim_w', nt[0])
-        if DEBUG: print('mn_sim', mnt[0])
-        if DEBUG: print('truths', dataset_np['truths'])
-        if DEBUG: print('predictions at {} epoch'.format(nEpoch), recordP)
+        if options.DEBUG: print('m_sim_w', mt[0])
+        if options.DEBUG: print('n_sim_w', nt[0])
+        if options.DEBUG: print('mn_sim', mnt[0])
+        if options.DEBUG: print('truths', dataset_np['truths'])
+        if options.DEBUG: print('predictions at {} epoch'.format(nEpoch), recordP)
 
         return output
 
 
 if __name__ != '__main__': #Manually execute when using Jupyter
 
-    DEBUG = False
+    options.DEBUG = False
     #--Training and pipeline evaluate
     #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
     output_1 = gen_learnWeight(exp='1', m_dists=[u_dist_person, u_dist_sat, u_dist_demo], n_dists=[dist_triplet, dist_review, dist_genre], _cf=True, nRef=-1, nEpoch=200, lRate=0.01, batchSize=-1, title='All')
@@ -561,15 +548,15 @@ def gen_model(exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _n
     for m in range(nM):
         for n in gameRatedByRater[m]:
 
-            if DEBUG:
+            if options.DEBUG:
                 if m != 2 or n != 1: continue
             
             #Prepare the reference ratings
             #Prepare the mask remove self and nan from the matrix 
             pref_train, mask, truths_nan[m, n] = gen_pref8mask(m, n, _colMask=_colMask)
 
-            if DEBUG: print('pref_train', pref_train)
-            if DEBUG: print('mask', mask)
+            if options.DEBUG: print('pref_train', pref_train)
+            if options.DEBUG: print('mask', mask)
 
             #Compute CF, transform distance to similarity
             m_sim, n_sim = gen_dist2sim(m_dists, n_dists, _cf, pref_train, _negSim)
@@ -581,13 +568,13 @@ def gen_model(exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _n
             m_sim_w = eval(M_SIM_W)
             n_sim_w = eval(N_SIM_W)
 
-            if DEBUG: print('m_sim_w', m_sim_w)
-            if DEBUG: print('n_sim_w', n_sim_w)
+            if options.DEBUG: print('m_sim_w', m_sim_w)
+            if options.DEBUG: print('n_sim_w', n_sim_w)
 
             #Combine two types of similarities
             mn_sim = eval(MN_SIM)
 
-            if DEBUG: print('mn_sim', mn_sim)
+            if options.DEBUG: print('mn_sim', mn_sim)
 
             #Use negative sign to reverse sort
             #Acquire only nRef references
@@ -598,11 +585,11 @@ def gen_model(exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _n
             #Clipping the value to avoid 0 division
             predictions_nan[m, n] = c[0] + np.sum((pref_train[mask] * mn_sim[mask])[refIdx]) / (np.sum(mn_sim[mask][refIdx]) + 1e-10)
 
-            if DEBUG: print('ref_rating', pref_train[mask][refIdx])
-            if DEBUG: print('ref_sim', mn_sim[mask][refIdx])
-            if DEBUG: print('prediction', predictions_nan[m, n])
-            if DEBUG: print(m, n)
-            if DEBUG: return ["", ""]
+            if options.DEBUG: print('ref_rating', pref_train[mask][refIdx])
+            if options.DEBUG: print('ref_sim', mn_sim[mask][refIdx])
+            if options.DEBUG: print('prediction', predictions_nan[m, n])
+            if options.DEBUG: print(m, n)
+            if options.DEBUG: return ["", ""]
 
     #Take non-nan entries and makes into long-form by [isnan_inv] slicing
     truths_gen = truths_nan[isnan_inv]
@@ -622,7 +609,7 @@ def gen_model(exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _n
 
 if __name__ != '__main__': #Manually execute when using Jupyter
 
-    DEBUG = False
+    options.DEBUG = False
     #--Operations
     #Use nRef = -1 to employ all cells other than self
     #u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
