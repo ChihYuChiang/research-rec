@@ -4,9 +4,98 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import tensorflow as tf
-import logging
 from scipy.spatial.distance import pdist, squareform
 from generic import *
+
+'''
+------------------------------------------------------------
+App options and markers
+------------------------------------------------------------
+'''
+options = SettingContainer()
+options.DEBUG = False
+options.PRE_DE = True
+options.K_FOLD = 1
+
+markers = SettingContainer()
+markers.CURRENT_DATA = ''
+
+
+
+
+'''
+------------------------------------------------------------
+Model expression
+------------------------------------------------------------
+'''
+EXP = {
+    '1': {
+        'var': '^(._a)|c:',
+        'np': ('(m_sim ** m_a).prod(axis=0)',
+            '(n_sim ** n_a).prod(axis=0)',
+            'm_sim_w[m, :].reshape((data.nM, 1)) @ n_sim_w[n, :].reshape((1, data.nN))'),
+        'tf': ('tf.reduce_prod(m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
+            'tf.reduce_prod(n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
+            'tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]) @ tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN])')
+        },
+    '2': {
+        'var': '^(._a)|c:',
+        'np': ('(m_sim ** m_a).sum(axis=0)',
+           '(n_sim ** n_a).sum(axis=0)',
+           'np.broadcast_to(m_sim_w[m, :].reshape((data.nM, 1)), (data.nM, data.nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, data.nN)), (data.nM, data.nN))'),
+        'tf': ('tf.reduce_sum(m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
+            'tf.reduce_sum(n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
+            'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')
+        },
+    '2n': {
+        'var': '^(._a)|c:',
+        'np': ('(((m_sim >= 0) * 2 - 1) * np.absolute(m_sim) ** m_a).sum(axis=0)',
+           '(((n_sim >= 0) * 2 - 1) * np.absolute(n_sim) ** n_a).sum(axis=0)',
+           'np.broadcast_to(m_sim_w[m, :].reshape((data.nM, 1)), (data.nM, data.nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, data.nN)), (data.nM, data.nN))'),
+        'tf': ('tf.reduce_sum((tf.cast(m_sim >= 0, tf.float32) * 2 - 1) * tf.abs(m_sim) ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
+           'tf.reduce_sum((tf.cast(n_sim >= 0, tf.float32) * 2 - 1) * tf.abs(n_sim) ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
+           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')
+        },
+    '3': {
+        'var': '^(._a)|(._b)|c:',
+        'np': ('(m_b * m_sim ** m_a).sum(axis=0)',
+           '(n_b * n_sim ** n_a).sum(axis=0)',
+           'np.broadcast_to(m_sim_w[m, :].reshape((data.nM, 1)), (data.nM, data.nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, data.nN)), (data.nM, data.nN))'),
+        'tf': ('tf.reduce_sum(tf.tile(m_b, [batchSize, 1, nM, nM]) * m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
+           'tf.reduce_sum(tf.tile(n_b, [batchSize, 1, nN, nN]) * n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
+           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')
+        },
+    '3n': {
+        'var': '^(._a)|(._b)|c:',
+        'np': ('(((m_sim >= 0) * 2 - 1) * m_b * np.absolute(m_sim) ** m_a).sum(axis=0)',
+           '(((n_sim >= 0) * 2 - 1) * n_b * np.absolute(n_sim) ** n_a).sum(axis=0)',
+           'np.broadcast_to(m_sim_w[m, :].reshape((data.nM, 1)), (data.nM, data.nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, data.nN)), (data.nM, data.nN))'),
+        'tf': ('tf.reduce_sum((tf.cast(m_sim >= 0, tf.float32) * 2 - 1) * tf.tile(m_b, [batchSize, 1, nM, nM]) * tf.abs(m_sim) ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
+           'tf.reduce_sum((tf.cast(n_sim >= 0, tf.float32) * 2 - 1) * tf.tile(n_b, [batchSize, 1, nN, nN]) * tf.abs(n_sim) ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
+           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')
+        },
+    '4': {
+        'var': '^(._a)|(._b)|c:',
+        'np': ('(m_b * m_sim ** m_a).sum(axis=0) + np.eye(nM)',
+           '(n_b * n_sim ** n_a).sum(axis=0) + np.eye(nN)',
+           'np.broadcast_to(m_sim_w[m, :].reshape((data.nM, 1)), (data.nM, data.nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, data.nN)), (data.nM, data.nN))'),
+        'tf': ('tf.reduce_sum(tf.tile(m_b, [batchSize, 1, nM, nM]) * m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1) + eyeM_batch',
+           'tf.reduce_sum(tf.tile(n_b, [batchSize, 1, nN, nN]) * n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1) + eyeN_batch',
+           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')
+        },
+    '4n': {
+        'var': '^(._a)|(._b)|c:',
+        'np': ('(((m_sim >= 0) * 2 - 1) * m_b * np.absolute(m_sim) ** m_a).sum(axis=0) + np.eye(nM)',
+           '(((n_sim >= 0) * 2 - 1) * n_b * np.absolute(n_sim) ** n_a).sum(axis=0) + np.eye(nN)',
+           'np.broadcast_to(m_sim_w[m, :].reshape((data.nM, 1)), (data.nM, data.nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, data.nN)), (data.nM, data.nN))'),
+        'tf': ('tf.reduce_sum((tf.cast(m_sim >= 0, tf.float32) * 2 - 1) * tf.tile(m_b, [batchSize, 1, nM, nM]) * tf.abs(m_sim) ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1) + eyeM_batch',
+           'tf.reduce_sum((tf.cast(n_sim >= 0, tf.float32) * 2 - 1) * tf.tile(n_b, [batchSize, 1, nN, nN]) * tf.abs(n_sim) ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1) + eyeN_batch',
+           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')
+        }
+}
+
+
+
 
 '''
 ------------------------------------------------------------
@@ -18,6 +107,11 @@ class DataContainer(UniversalContainer):
 
     def __init__(self, _preDe=False):
         self.pref_nan, self.prefs, self.nM, self.nN, self.nMN, self.isnan_inv, self.gameRatedByRater = preprocessing(description=False, _preDe=_preDe)
+        self.naniloc_inv = np.where(isnan_inv)
+    
+    def updateByNan(self):
+        self.prefs, self.nM, self.nN, self.nMN, self.isnan_inv, self.gameRatedByRater = preprocessing_core(self.pref_nan, _preDe)
+        self.naniloc_inv = np.where(isnan_inv)
 
 
 #--SVD
@@ -170,18 +264,3 @@ def multiImplement(nRef, implementation, nRand, titleLabel):
     plt.ylabel('Correlation with the real score')
     plt.show()
     plt.close()
-
-
-
-
-'''
-------------------------------------------------------------
-App options and markers
-------------------------------------------------------------
-'''
-options = SettingContainer()
-options.DEBUG = False
-options.PRE_DE = True
-
-markers = SettingContainer()
-markers.CURRENT_DATA = ''

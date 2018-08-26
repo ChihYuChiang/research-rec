@@ -118,6 +118,7 @@ def kFold(k, nMN, seed=1):
 
 #--Logger
 def iniLogger(loggerName, fileName, _console):
+    import logging
 
     #Use the default logger
     logger = logging.getLogger(loggerName)

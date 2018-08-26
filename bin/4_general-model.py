@@ -3,7 +3,7 @@ import re
 from util import *
 import warnings
 
-#--Setting
+#--Set up
 #Loggers
 logger = iniLogger('main', 'main.log', _console=True) if 'logger' not in globals() else logger
 if 'logger_metric' not in globals():
@@ -17,9 +17,6 @@ if 'logger_weight' not in globals():
 #Suppress warning due to tf gather
 if not options.DEBUG: warnings.filterwarnings("ignore")
 
-data = DataContainer(_preDe=True)
-data.listData()
-
 
 
 
@@ -30,16 +27,11 @@ Preference data
 '''
 #--Preprocessing pref data
 #Read from file, processing without folds
-pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=options.PRE_DE)
-pref_pre_allmean = pd.read_csv(r'../data/res_demean.csv').allmean[0]
+data_whole = DataContainer(_preDe=options.PRE_DE)
+data_whole.listData()
 
-#Number of example of the entire data set
-nMN_whole = nMN
-
-#Log
-_currentData = 'whole'
-print('-' * 60)
-print('Now using the entire data set.')
+#Prepare current data set
+data_current = DataContainer(_preDe=options.PRE_DE)
 
 
 #--Updating data as training and test sets
@@ -50,109 +42,29 @@ def gen_preprocessing_kFold(foldId, _marker):
     #Fold id 1 -> 0
     foldId -= 1
     
-    #K_FOLD == 1, test set == training set
-    if K_FOLD > 1: 
-
-        #Manage global directly
-        global pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
-        global _currentData
+    #options.K_FOLD == 1, test set == training set
+    if options.K_FOLD > 1: 
 
         #Reset data
-        pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=options.PRE_DE)
-        naniloc_inv = np.where(isnan_inv)
-
+        data_current.pref_nan = data_whole.pref_nan
         
         #Test set blanks training set ids
         if _marker == 'test':
-            nanCell = [np.take(naniloc_inv[0], id_train[foldId]), np.take(naniloc_inv[1], id_train[foldId])]
-            pref_nan[nanCell] = np.nan
+            nanCell = [np.take(data_whole.naniloc_inv[0], id_train[foldId]), np.take(data_whole.naniloc_inv[1], id_train[foldId])]
+            data_current.pref_nan[nanCell] = np.nan
 
         #Training set blanks test set ids
         if _marker == 'training':
-            nanCell = [np.take(naniloc_inv[0], id_test[foldId]), np.take(naniloc_inv[1], id_test[foldId])]
-            pref_nan[nanCell] = np.nan
+            nanCell = [np.take(data_whole.naniloc_inv[0], id_test[foldId]), np.take(data_whole.naniloc_inv[1], id_test[foldId])]
+            data_current.pref_nan[nanCell] = np.nan
 
-        #Update global vars
-        prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan, _preDe=options.PRE_DE)
+        #Update global vars by the new pref_nan
+        data_current.updateByNan()
 
     #Log
-    _currentData = '#{}/{}, {}'.format(foldId + 1, K_FOLD, _marker)
+    markers.CURRENT_DATA = '#{}/{}, {}'.format(foldId + 1, options.K_FOLD, _marker)
     logger.DEBUG('-' * 60)
-    logger.DEBUG('Now using fold ' + _currentData + ' set.')
-
-
-
-
-'''
-------------------------------------------------------------
-Model expression
-------------------------------------------------------------
-'''
-EXP = {
-    '1': {
-        'var': '^(._a)|c:',
-        'np': ('(m_sim ** m_a).prod(axis=0)',
-            '(n_sim ** n_a).prod(axis=0)',
-            'm_sim_w[m, :].reshape((nM, 1)) @ n_sim_w[n, :].reshape((1, nN))'),
-        'tf': ('tf.reduce_prod(m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
-            'tf.reduce_prod(n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
-            'tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]) @ tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN])')
-        },
-    '2': {
-        'var': '^(._a)|c:',
-        'np': ('(m_sim ** m_a).sum(axis=0)',
-           '(n_sim ** n_a).sum(axis=0)',
-           'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
-        'tf': ('tf.reduce_sum(m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
-            'tf.reduce_sum(n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
-            'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')
-        },
-    '2n': {
-        'var': '^(._a)|c:',
-        'np': ('(((m_sim >= 0) * 2 - 1) * np.absolute(m_sim) ** m_a).sum(axis=0)',
-           '(((n_sim >= 0) * 2 - 1) * np.absolute(n_sim) ** n_a).sum(axis=0)',
-           'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
-        'tf': ('tf.reduce_sum((tf.cast(m_sim >= 0, tf.float32) * 2 - 1) * tf.abs(m_sim) ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
-           'tf.reduce_sum((tf.cast(n_sim >= 0, tf.float32) * 2 - 1) * tf.abs(n_sim) ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
-           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')
-        },
-    '3': {
-        'var': '^(._a)|(._b)|c:',
-        'np': ('(m_b * m_sim ** m_a).sum(axis=0)',
-           '(n_b * n_sim ** n_a).sum(axis=0)',
-           'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
-        'tf': ('tf.reduce_sum(tf.tile(m_b, [batchSize, 1, nM, nM]) * m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
-           'tf.reduce_sum(tf.tile(n_b, [batchSize, 1, nN, nN]) * n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
-           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')
-        },
-    '3n': {
-        'var': '^(._a)|(._b)|c:',
-        'np': ('(((m_sim >= 0) * 2 - 1) * m_b * np.absolute(m_sim) ** m_a).sum(axis=0)',
-           '(((n_sim >= 0) * 2 - 1) * n_b * np.absolute(n_sim) ** n_a).sum(axis=0)',
-           'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
-        'tf': ('tf.reduce_sum((tf.cast(m_sim >= 0, tf.float32) * 2 - 1) * tf.tile(m_b, [batchSize, 1, nM, nM]) * tf.abs(m_sim) ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1)',
-           'tf.reduce_sum((tf.cast(n_sim >= 0, tf.float32) * 2 - 1) * tf.tile(n_b, [batchSize, 1, nN, nN]) * tf.abs(n_sim) ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1)',
-           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')
-        },
-    '4': {
-        'var': '^(._a)|(._b)|c:',
-        'np': ('(m_b * m_sim ** m_a).sum(axis=0) + np.eye(nM)',
-           '(n_b * n_sim ** n_a).sum(axis=0) + np.eye(nN)',
-           'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
-        'tf': ('tf.reduce_sum(tf.tile(m_b, [batchSize, 1, nM, nM]) * m_sim ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1) + eyeM_batch',
-           'tf.reduce_sum(tf.tile(n_b, [batchSize, 1, nN, nN]) * n_sim ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1) + eyeN_batch',
-           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')
-        },
-    '4n': {
-        'var': '^(._a)|(._b)|c:',
-        'np': ('(((m_sim >= 0) * 2 - 1) * m_b * np.absolute(m_sim) ** m_a).sum(axis=0) + np.eye(nM)',
-           '(((n_sim >= 0) * 2 - 1) * n_b * np.absolute(n_sim) ** n_a).sum(axis=0) + np.eye(nN)',
-           'np.broadcast_to(m_sim_w[m, :].reshape((nM, 1)), (nM, nN)) + np.broadcast_to(n_sim_w[n, :].reshape((1, nN)), (nM, nN))'),
-        'tf': ('tf.reduce_sum((tf.cast(m_sim >= 0, tf.float32) * 2 - 1) * tf.tile(m_b, [batchSize, 1, nM, nM]) * tf.abs(m_sim) ** tf.tile(m_a, [batchSize, 1, nM, nM]), axis=1) + eyeM_batch',
-           'tf.reduce_sum((tf.cast(n_sim >= 0, tf.float32) * 2 - 1) * tf.tile(n_b, [batchSize, 1, nN, nN]) * tf.abs(n_sim) ** tf.tile(n_a, [batchSize, 1, nN, nN]), axis=1) + eyeN_batch',
-           'tf.tile(tf.reshape(tf.gather_nd(m_sim_w, simIdx_m), [batchSize, nM, 1]), [1, 1, nN]) + tf.tile(tf.reshape(tf.gather_nd(n_sim_w, simIdx_n), [batchSize, 1, nN]), [1, nM, 1])')
-        }
-}
+    logger.DEBUG('Now using fold ' + markers.CURRENT_DATA + ' set.')
 
 
 
@@ -211,7 +123,7 @@ def gen_pref8mask(m, n, _colMask):
         truth -= mMean[m] + nMean[n]
 
     #Impute nan with total mean and adjust by column and row effects (demean)
-    pref_train = imputation(pref_train, pref_pre_allmean)
+    pref_train = imputation(pref_train, pd.read_csv(r'../data/res_demean.csv').allmean[0])
 
     #--Mask
     #Remove self from the matrix 
@@ -302,7 +214,7 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
     #--Log
     title += ' (${}, nRef={}, lRate={}, bSize={})'.format(exp, nRef, lRate, batchSize)
     logger.info('-' * 60)
-    logger.info('{} ({})'.format(title, _currentData))
+    logger.info('{} ({})'.format(title, markers.CURRENT_DATA))
 
 
     #--Initialization
@@ -483,9 +395,10 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
         #Title, m_a, n_a, m_b, n_b, c
         tranWeight = lambda x: '{}'.format(str(list(x)).strip('[]').replace(', ', '/'))
         weights_str = map(tranWeight, [output['m_a'], output['n_a'], output['m_b'], output['n_b'], output['c']])
-        logger_weight.info(', '.join(['\"{} ({})\"'.format(title, _currentData), *weights_str]))
+        logger_weight.info(', '.join(['\"{} ({})\"'.format(title, markers.CURRENT_DATA), *weights_str]))
 
         #Format for plugging into the model function
+        output['data'] = data
         output['exp'] = exp
         output['m_dists'] = m_dists
         output['n_dists'] = n_dists
@@ -534,19 +447,19 @@ Model
 ------------------------------------------------------------
 '''
 #--Average similarity
-def gen_model(exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _negSim=False, _colMask=False, graph=False):
+def gen_model(data, exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _negSim=False, _colMask=False, graph=False):
     
     #Initialize
     m_dists, n_dists = gen_ini_dist(m_dists, n_dists, _cf)
     m_a, n_a, m_b, n_b = gen_ini_w(m_a, n_a, m_b, n_b)
 
     #Prepare empty truth and prediction hulls
-    truths_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
-    predictions_nan = np.full(shape=pref_nan.shape, fill_value=np.nan)
+    truths_nan = np.full(shape=data.pref_nan.shape, fill_value=np.nan)
+    predictions_nan = np.full(shape=data.pref_nan.shape, fill_value=np.nan)
 
     #Prediction, each cell by each cell
-    for m in range(nM):
-        for n in gameRatedByRater[m]:
+    for m in range(data.nM):
+        for n in data.gameRatedByRater[m]:
 
             if options.DEBUG:
                 if m != 2 or n != 1: continue
@@ -596,12 +509,12 @@ def gen_model(exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _n
     predictions_gen = predictions_nan[isnan_inv]
 
     #Evaluation
-    metrics_gen = evalModel(predictions_gen, truths_gen, nMN, title='{} ({})'.format(title, _currentData), graph=graph, logger=logger.info)
+    metrics_gen = evalModel(predictions_gen, truths_gen, data.nMN, title='{} ({})'.format(title, markers.CURRENT_DATA), graph=graph, logger=logger.info)
 
     #Log csv
     #Title, MSE, cor, rho
     metrics_gen_str = map(str, metrics_gen)
-    logger_metric.info(', '.join(['\"{} ({})\"'.format(title, _currentData), *metrics_gen_str]))
+    logger_metric.info(', '.join(['\"{} ({})\"'.format(title, markers.CURRENT_DATA), *metrics_gen_str]))
 
     #Return the predicted value
     return predictions_gen, metrics_gen
@@ -613,8 +526,8 @@ if __name__ != '__main__': #Manually execute when using Jupyter
     #--Operations
     #Use nRef = -1 to employ all cells other than self
     #u_dist_person  u_dist_demo  u_dist_sat  dist_triplet  dist_review  dist_genre
-    predictions_gen, metrics_gen = gen_model(exp='2', nRef=-1, m_dists=[np.ones((nM, nM))], n_dists=[np.ones((nN, nN))], _cf=False, m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='General model 1')
-    predictions_gen, metrics_gen = gen_model(exp='1', nRef=-1, m_dists=[], n_dists=[], _cf=False, m_a=[1], n_a=[], m_b=[1], n_b=[], c=[0], title='General model 2')
+    predictions_gen, metrics_gen = gen_model(data=data_current, exp='2', nRef=-1, m_dists=[np.ones((data_current.nM, data_current.nM))], n_dists=[np.ones((data_current.nN, data_current.nN))], _cf=False, m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='General model 1')
+    predictions_gen, metrics_gen = gen_model(data=data_current, exp='1', nRef=-1, m_dists=[], n_dists=[], _cf=False, m_a=[1], n_a=[], m_b=[1], n_b=[], c=[0], title='General model 2')
 
 
 
@@ -628,8 +541,8 @@ if __name__ != '__main__': #Manually execute when using Jupyter
     '''
     #--Initialization
     #Acquire k-fold ids
-    K_FOLD = 1
-    id_train, id_test = kFold(K_FOLD, nMN_whole, seed=1)
+    options.K_FOLD = 1
+    id_train, id_test = kFold(options.K_FOLD, data_whole.nMN, seed=1)
 
 
     #--Provide learning parameters
@@ -643,8 +556,8 @@ if __name__ != '__main__': #Manually execute when using Jupyter
     'exp': ['1', '2', '3', '4'],
     'para_key': ['title', 'm_dists', 'n_dists', '_cf'],
     'para': [
-        ['EyeM', [], [np.ones((nN, nN))], False],
-        ['EyeN', [np.ones((nM, nM))], [], False],
+        ['EyeM', [], [np.ones((data_current.nN, data_current.nN))], False],
+        ['EyeN', [np.ones((data_current.nM, data_current.nM))], [], False],
         ['Review', [], [dist_review], False],
         # ['Sat', [u_dist_sat], [], False],
         ['Person', [u_dist_person], [], False],
@@ -670,7 +583,7 @@ if __name__ != '__main__': #Manually execute when using Jupyter
             #Record metrics of a particular para combination
             kMse, kCor, kRho = ([] for i in range(3))
             
-            for i in range(K_FOLD):
+            for i in range(options.K_FOLD):
                 #Using training set to learn the weights
                 gen_preprocessing_kFold(i + 1, 'training')
                 para_dic.update(zip(paras['para_key'], para))
