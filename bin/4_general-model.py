@@ -27,6 +27,7 @@ Preference data
 '''
 #--Preprocessing pref data
 #Read from file, processing without folds
+#Data_whole is never modified
 data_whole = DataContainer(_preDe=options.PRE_DE)
 data_whole.listData()
 
@@ -35,7 +36,8 @@ data_current = DataContainer(_preDe=options.PRE_DE)
 
 
 #--Updating data as training and test sets
-def gen_preprocessing_kFold(foldId, _marker):
+#The only place modify data_current
+def gen_preprocessing_kFold(data_whole, data_current, foldId, _marker):
     assert foldId >= 0, 'Fold ID starts from 1.'
     assert _marker in ['training', 'test'], 'Wrong marker.'
 
@@ -106,11 +108,10 @@ def gen_ini_w(m_a, n_a, m_b, n_b):
 #Prepare pref_train for a particular target cell as rating reference
 #Prepare the truth adjusted by the col and row effects
 #Prepare a mask masking target self and all nan cells
-def gen_pref8mask(m, n, _colMask):
+def gen_pref8mask(pref_train, isnan_inv_mn, m, n, _colMask):
 
     #--Pref
     #Mask the pref_nan to acquire training (reference) data
-    pref_train = pref_nan.copy()
     truth = pref_train[m, n]
     pref_train[m, n] = np.nan
     
@@ -127,7 +128,6 @@ def gen_pref8mask(m, n, _colMask):
 
     #--Mask
     #Remove self from the matrix 
-    isnan_inv_mn = isnan_inv.copy()
     isnan_inv_mn[m, n] = False
 
     #Remove the entire column from the matrix
@@ -171,7 +171,7 @@ def gen_iniData(m_dists, n_dists, _cf):
     return m_dists, n_dists, len(m_dists) + _cf, len(n_dists)
 
 #Compile input dataset
-def gen_npDataset(m_dists, n_dists, _cf, _negSim, _colMask):
+def gen_npDataset(nM, gameRatedByRater, pref_nan, isnan_inv, m_dists, n_dists, _cf, _negSim, _colMask):
 
     #Empty containers
     pref_trains, masks, m_sims, n_sims, truths, ms, ns = ([] for i in range(7))
@@ -181,7 +181,7 @@ def gen_npDataset(m_dists, n_dists, _cf, _negSim, _colMask):
         for n in gameRatedByRater[m]:
 
             #Prepare all required inputs
-            pref_train, mask, truth = gen_pref8mask(m, n, _colMask)
+            pref_train, mask, truth = gen_pref8mask(pref_nan.copy(), isnan_inv.copy(), m, n, _colMask)
             m_sim, n_sim = gen_dist2sim(m_dists, n_dists, _cf, pref_train, _negSim)
 
             pref_trains.append(pref_train)
@@ -209,7 +209,7 @@ def gen_npDataset(m_dists, n_dists, _cf, _negSim, _colMask):
 
 
 #--Learn weight (average similarity)
-def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=0, lRate=0.5, batchSize=-1, _negSim=None, _colMask=False, _shuffle=False, _graph=False):
+def gen_learnWeight(data, exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=0, lRate=0.5, batchSize=-1, _negSim=None, _colMask=False, _shuffle=False, _graph=False):
 
     #--Log
     title += ' (${}, nRef={}, lRate={}, bSize={})'.format(exp, nRef, lRate, batchSize)
@@ -229,14 +229,14 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
     if options.DEBUG: print(nMDist)
     if options.DEBUG: print(nNDist)
 
-    dataset_np, nExample = gen_npDataset(m_dists_processed, n_dists_processed, _cf, _negSim, _colMask)
+    dataset_np, nExample = gen_npDataset(data.nM, data.gameRatedByRater, data.pref_nan, data.isnan_inv, m_dists_processed, n_dists_processed, _cf, _negSim, _colMask)
 
     if options.DEBUG: print(dataset_np['m_sims'][0])
     if options.DEBUG: print(dataset_np['n_sims'][0])
     
     if batchSize == -1: batchSize = nExample #An epoch as a batch
-    eyeM_batch = np.broadcast_to(np.eye(nM).reshape(1, nM, nM), (batchSize, nM, nM))
-    eyeN_batch = np.broadcast_to(np.eye(nN).reshape(1, nN, nN), (batchSize, nN, nN))
+    eyeM_batch = np.broadcast_to(np.eye(data.nM).reshape(1, data.nM, data.nM), (batchSize, data.nM, data.nM))
+    eyeN_batch = np.broadcast_to(np.eye(data.nN).reshape(1, data.nN, data.nN), (batchSize, data.nN, data.nN))
 
     #Reset graph
     tf.reset_default_graph()
@@ -253,10 +253,10 @@ def gen_learnWeight(exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=
 
     #--Input
     #Input placeholders
-    pref_train_ds = tf.placeholder(tf.float32, [nExample, nM, nN], name='pref_train')
-    mask_ds = tf.placeholder(tf.bool, [nExample, nM, nN], name='mask')
-    m_sim_ds = tf.placeholder(tf.float32, [nExample, nMDist, nM, nM], name='m_sim')
-    n_sim_ds = tf.placeholder(tf.float32, [nExample, nNDist, nN, nN], name='n_sim')
+    pref_train_ds = tf.placeholder(tf.float32, [nExample, data.nM, data.nN], name='pref_tradata.in')
+    mask_ds = tf.placeholder(tf.bool, [nExample, data.nM, data.nN], name='mask')
+    m_sim_ds = tf.placeholder(tf.float32, [nExample, nMDist, data.nM, data.nM], name='m_sim')
+    n_sim_ds = tf.placeholder(tf.float32, [nExample, nNDist, data.nN, data.nN], name='n_sim')
     pref_true_ds = tf.placeholder(tf.float32, [nExample], name='pref_true')
     m_id_ds = tf.placeholder(tf.int32, [nExample], name='m_id')
     n_id_ds = tf.placeholder(tf.int32, [nExample], name='n_id')
@@ -422,16 +422,16 @@ if __name__ != '__main__': #Manually execute when using Jupyter
     options.DEBUG = False
     #--Training and pipeline evaluate
     #u_dist_person  u_dist_sat  u_dist_demo  dist_triplet  dist_review  dist_genre
-    output_1 = gen_learnWeight(exp='1', m_dists=[u_dist_person, u_dist_sat, u_dist_demo], n_dists=[dist_triplet, dist_review, dist_genre], _cf=True, nRef=-1, nEpoch=200, lRate=0.01, batchSize=-1, title='All')
+    output_1 = gen_learnWeight(data=data_current, exp='1', m_dists=[u_dist_person, u_dist_sat, u_dist_demo], n_dists=[dist_triplet, dist_review, dist_genre], _cf=True, nRef=-1, nEpoch=200, lRate=0.01, batchSize=-1, title='All')
     predictions_1, metrics_1 = gen_model(**output_1)
-    output_2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[], _cf=True, nRef=-1, nEpoch=100, lRate=0.01, batchSize=-1, title='CF')
+    output_2 = gen_learnWeight(data=data_current, exp='1', m_dists=[], n_dists=[], _cf=True, nRef=-1, nEpoch=100, lRate=0.01, batchSize=-1, title='CF')
     predictions_2, metrics_2 = gen_model(**output_2)
 
-    output_base0 = gen_learnWeight(exp='1', m_dists=[np.ones((nM, nM)) * 2], n_dists=[np.ones((nN, nN)) * 2], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_none')
+    output_base0 = gen_learnWeight(data=data_current, exp='1', m_dists=[np.ones((nM, nM)) * 2], n_dists=[np.ones((nN, nN)) * 2], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_none')
     predictions_base0, metrics_base0 = gen_model(**output_base0)
-    output_base1 = gen_learnWeight(exp='1', m_dists=[np.ones((nM, nM)) * 2], n_dists=[], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_eyeN')
+    output_base1 = gen_learnWeight(data=data_current, exp='1', m_dists=[np.ones((nM, nM)) * 2], n_dists=[], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_eyeN')
     predictions_base1, metrics_base1 = gen_model(**output_base1)
-    output_base2 = gen_learnWeight(exp='1', m_dists=[], n_dists=[np.ones((nN, nN)) * 2], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_eyeM')
+    output_base2 = gen_learnWeight(data=data_current, exp='1', m_dists=[], n_dists=[np.ones((nN, nN)) * 2], _cf=False, nRef=-1, nEpoch=100, lRate=0.1, batchSize=-1, title='Base_eyeM')
     predictions_base2, metrics_base2 = gen_model(**output_base2)
 
 
@@ -466,7 +466,7 @@ def gen_model(data, exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, tit
             
             #Prepare the reference ratings
             #Prepare the mask remove self and nan from the matrix 
-            pref_train, mask, truths_nan[m, n] = gen_pref8mask(m, n, _colMask=_colMask)
+            pref_train, mask, truths_nan[m, n] = gen_pref8mask(pref_nan.copy(), isnan_inv.copy(), m, n, _colMask)
 
             if options.DEBUG: print('pref_train', pref_train)
             if options.DEBUG: print('mask', mask)
@@ -585,12 +585,12 @@ if __name__ != '__main__': #Manually execute when using Jupyter
             
             for i in range(options.K_FOLD):
                 #Using training set to learn the weights
-                gen_preprocessing_kFold(i + 1, 'training')
+                gen_preprocessing_kFold(data_whole, data_current, i + 1, 'training')
                 para_dic.update(zip(paras['para_key'], para))
                 output = gen_learnWeight_kFold(exp=exp, **para_dic)
 
                 #Using test set to observe the performance
-                gen_preprocessing_kFold(i + 1, 'test')
+                gen_preprocessing_kFold(data_whole, data_current, i + 1, 'test')
                 _, metrics = gen_model(**output)
 
                 kMse.append(metrics[0])

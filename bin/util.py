@@ -107,11 +107,11 @@ class DataContainer(UniversalContainer):
 
     def __init__(self, _preDe=False):
         self.pref_nan, self.prefs, self.nM, self.nN, self.nMN, self.isnan_inv, self.gameRatedByRater = preprocessing(description=False, _preDe=_preDe)
-        self.naniloc_inv = np.where(isnan_inv)
+        self.naniloc_inv = np.where(self.isnan_inv)
     
     def updateByNan(self):
         self.prefs, self.nM, self.nN, self.nMN, self.isnan_inv, self.gameRatedByRater = preprocessing_core(self.pref_nan, _preDe)
-        self.naniloc_inv = np.where(isnan_inv)
+        self.naniloc_inv = np.where(self.isnan_inv)
 
 
 #--SVD
