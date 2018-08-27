@@ -41,6 +41,9 @@ def listEWiseOp(op, l):
 #--Graphing 2-D scatter plot
 #With distribution and linear fitting line
 def scatter(vectors, names):
+    import seaborn as sns
+    import pandas as pd
+    import matplotlib.pyplot as plt
 
     sns.set(color_codes=True)
 
@@ -56,6 +59,7 @@ def scatter(vectors, names):
 #--Remove row and column effect
 #Acquire row and column effect
 def getMean(matrix):
+    import numpy as np
 
     #Compute row and column effects
     mMean = np.nanmean(matrix, axis=1) - np.mean(np.nanmean(matrix, axis=1))
@@ -70,6 +74,8 @@ def getMean(matrix):
 
 #--Evaluate model with mse, cor, and graphing
 def evalModel(predictions, truth, nMN, title, graph, logger=None):
+    import numpy as np
+    import scipy as sp
 
     #Description
     mse = np.sum(np.square(predictions - truth)) / nMN
@@ -91,6 +97,7 @@ def evalModel(predictions, truth, nMN, title, graph, logger=None):
 
 #--Acquire ids of a k-fold training testing set
 def kFold(k, nMN, seed=1):
+    import numpy as np
 
     #Reset the seed
     np.random.seed(seed=seed)
@@ -146,6 +153,7 @@ def iniLogger(loggerName, fileName, _console):
 #--nan imputation by total mean and adjust by column and row effects
 #Return imputed matrix
 def imputation(matrix, imValue=None):
+    import numpy as np
     
     #Find nan iloc
     naniloc = np.where(np.isnan(matrix))

@@ -4,8 +4,16 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import tensorflow as tf
+import random
+import math
+import re
+import copy
+import warnings
+from functools import partial
+from scipy.stats import t as dis_t
 from scipy.spatial.distance import pdist, squareform
 from generic import *
+
 
 '''
 ------------------------------------------------------------
@@ -105,12 +113,12 @@ Common functions
 #--Data container
 class DataContainer(UniversalContainer):
 
-    def __init__(self, _preDe=False):
+    def __init__(self, _preDe):
         self.pref_nan, self.prefs, self.nM, self.nN, self.nMN, self.isnan_inv, self.gameRatedByRater = preprocessing(description=False, _preDe=_preDe)
         self.naniloc_inv = np.where(self.isnan_inv)
     
-    def updateByNan(self):
-        self.prefs, self.nM, self.nN, self.nMN, self.isnan_inv, self.gameRatedByRater = preprocessing_core(self.pref_nan, _preDe)
+    def updateByNan(self, _preDe):
+        self.prefs, self.nM, self.nN, self.nMN, self.isnan_inv, self.gameRatedByRater = preprocessing_core(self.pref_nan, _preDe=_preDe)
         self.naniloc_inv = np.where(self.isnan_inv)
 
 

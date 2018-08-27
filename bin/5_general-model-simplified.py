@@ -1,3 +1,6 @@
+from util import *
+
+
 '''
 ------------------------------------------------------------
 Component functions
@@ -5,54 +8,48 @@ Component functions
 - Replace the original functions in 4.
 ------------------------------------------------------------
 '''
-def gen_preprocessing_kFold(foldId, _marker):
+def gen_preprocessing_kFold(data_whole, data_current, foldId, _marker):
     assert _marker in ['X', 'Y'], 'Wrong marker.'
 
     #Fold id 1 -> 0. Fold ID starts from 1.
     foldId -= 1
 
-    #Manage global directly
-    global pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
-
     #Reset data
-    pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=True)
-    naniloc_inv = np.where(isnan_inv)
+    data_current.pref_nan = data_whole.pref_nan.copy()
 
     #Blanks ids of the opposite markers
     if _marker == 'Y':
-        nanCell = [np.take(naniloc_inv[0], id_X[foldId]), np.take(naniloc_inv[1], id_X[foldId])]
-        pref_nan[nanCell] = np.nan
+        nanCell = [np.take(data_whole.naniloc_inv[0], id_X[foldId]), np.take(data_whole.naniloc_inv[1], id_X[foldId])]
+        data_current.pref_nan[nanCell] = np.nan
+        data_current.updateByNan(_preDe=options.PRE_DE)
 
     if _marker == 'X':
-        nanCell = [np.take(naniloc_inv[0], id_Y[foldId]), np.take(naniloc_inv[1], id_Y[foldId])]
-        pref_nan[nanCell] = np.nan
+        nanCell = [np.take(data_whole.naniloc_inv[0], id_Y[foldId]), np.take(data_whole.naniloc_inv[1], id_Y[foldId])]
+        data_current.pref_nan[nanCell] = np.nan
+        print(data_current.pref_nan)
+        data_current.updateByNan(_preDe=options.PRE_DE)
 
-    #Update vars
-    return (pref_nan, *preprocessing_core(pref_nan, _preDe=True))
+    return copy.deepcopy(data_current)
 
-
-def gen_pref8mask(m, n, _colMask):
+#Get data directly from globals
+#For reusing the structure in 4.
+def gen_pref8mask(pref_train, isnan_inv_mn, m, n, _colMask):
 
     #--Pref
-    #Use Y
-    pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = data_Y
-
-    #Get the truth
-    truth = pref_nan[m, n]
-    
+    #Use Y to get the truth
+    truth = data_Y.pref_nan[m, n]    
 
     #--Mask
-    #Use X
-    pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = data_X
+    #Use X to replace the pref_train from Y
+    pref_train = data_X.pref_nan.copy()
+    isnan_inv_mn = data_X.isnan_inv.copy()
 
     #Mask the entire column (simulate a new product which has no rating)
-    if _colMask: pref_nan[:, n] = np.nan
-    
-    #Remove the entire column from the matrix
-    if _colMask: isnan_inv[:, n] = False
+    if _colMask:
+        pref_train[:, n] = np.nan
+        isnan_inv_mn[:, n] = False
 
-
-    return pref_nan, isnan_inv, truth
+    return pref_train, isnan_inv_mn, truth
     
 
 
@@ -60,39 +57,34 @@ def gen_pref8mask(m, n, _colMask):
 '''
 ------------------------------------------------------------
 Model
+
+- Data comes from 4.
 ------------------------------------------------------------
 '''
-#--Pre-removing col and row effects
-#Read from file, processing with all samples
-pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing(description=False, _preDe=True)
-
-
 #--Compute CF using all samples
-u_dist_cf = SVD(imputation(pref_nan, imValue=pd.read_csv(r'../data/res_demean.csv').allmean[0]))
+u_dist_cf = SVD(imputation(data_whole.pref_nan.copy(), imValue=pd.read_csv(r'../data/res_demean.csv').allmean[0]))
 
 
 #--Prepare pref_train, mask, and the truth
 #90% X, 10% Y
 #Avoid autocorrelation when using all - 1 samples predicts a target
-id_X, id_Y = kFold(10, nMN, seed=1)
+id_X, id_Y = kFold(10, data_whole.nMN, seed=1)
 
 #Acquire X and Y
 foldId = 1
-data_X = gen_preprocessing_kFold(foldId, 'X')
-data_Y = gen_preprocessing_kFold(foldId, 'Y')
+data_X = gen_preprocessing_kFold(data_whole, data_current, foldId, 'X')
+data_Y = gen_preprocessing_kFold(data_whole, data_current, foldId, 'Y')
+data_Y.listData()
 
 
 #--Predicting Y by X with sim combinations
-#Set global to Y
-pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = data_Y
-
 #Inherit
 #u_dist_person  u_dist_sat  u_dist_demo  u_dist_cf  dist_triplet  dist_review  dist_genre
-output = gen_learnWeight(exp='1', m_dists=[u_dist_cf], n_dists=[np.ones((nN, nN))], _cf=False, _colMask=False, nRef=-1, nEpoch=50, lRate=0.1, batchSize=-1, title='All')
+output = gen_learnWeight(data=data_Y, exp='1', m_dists=[u_dist_cf], n_dists=[np.ones((data_current.nN, data_current.nN))], _cf=False, _colMask=False, nRef=-1, nEpoch=50, lRate=0.01, batchSize=-1, title='All')
 predictions, metrics = gen_model(**output)
 
 #Manual
-predictions, metrics = gen_model(exp='1', nRef=-1, m_dists=[], n_dists=[dist_review], _cf=False, _colMask=True, m_a=[1], n_a=[0.7599], m_b=[1], n_b=[1], c=[4.104656], title='General model 2')
+predictions, metrics = gen_model(data=data_Y, exp='1', nRef=-1, m_dists=[u_dist_cf], n_dists=[np.ones((data_current.nN, data_current.nN))], _cf=False, _colMask=False, m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='General model 2')
 
 
 

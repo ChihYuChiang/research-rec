@@ -1,7 +1,5 @@
-import math
-import re
 from util import *
-import warnings
+
 
 #--Set up
 #Loggers
@@ -48,7 +46,7 @@ def gen_preprocessing_kFold(data_whole, data_current, foldId, _marker):
     if options.K_FOLD > 1: 
 
         #Reset data
-        data_current.pref_nan = data_whole.pref_nan
+        data_current.pref_nan = data_whole.pref_nan.copy()
         
         #Test set blanks training set ids
         if _marker == 'test':
@@ -61,7 +59,7 @@ def gen_preprocessing_kFold(data_whole, data_current, foldId, _marker):
             data_current.pref_nan[nanCell] = np.nan
 
         #Update global vars by the new pref_nan
-        data_current.updateByNan()
+        data_current.updateByNan(_preDe=options.PRE_DE)
 
     #Log
     markers.CURRENT_DATA = '#{}/{}, {}'.format(foldId + 1, options.K_FOLD, _marker)
@@ -124,7 +122,7 @@ def gen_pref8mask(pref_train, isnan_inv_mn, m, n, _colMask):
         truth -= mMean[m] + nMean[n]
 
     #Impute nan with total mean and adjust by column and row effects (demean)
-    pref_train = imputation(pref_train, pd.read_csv(r'../data/res_demean.csv').allmean[0])
+    pref_train = imputation(pref_train.copy(), pd.read_csv(r'../data/res_demean.csv').allmean[0])
 
     #--Mask
     #Remove self from the matrix 

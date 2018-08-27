@@ -1,6 +1,5 @@
-import random
-from functools import partial
 from util import *
+
 
 '''
 ------------------------------------------------------------
@@ -93,7 +92,7 @@ def CF(pref_nan, u_dist, m, n, nRef, mode, ifRand):
     pref_train[m, n] = np.nan
 
     #Impute nan with total mean and adjust by column and row effects
-    pref_train = imputation(pref_train)
+    pref_train = imputation(pref_train.copy())
 
     #Perform SVD for user distance matrix
     #Or use precomputed distance matrix

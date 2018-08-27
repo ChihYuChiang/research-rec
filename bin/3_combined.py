@@ -1,5 +1,5 @@
-from scipy.stats import t as dis_t
 from util import *
+
 
 '''
 ------------------------------------------------------------
