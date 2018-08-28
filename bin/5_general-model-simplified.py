@@ -28,6 +28,9 @@ def gen_preprocessing_kFold(data_whole, data_current, foldId, _marker):
         data_current.pref_nan[nanCell] = np.nan
         print(data_current.pref_nan)
         data_current.updateByNan(_preDe=options.PRE_DE)
+    
+    #Log
+    markers.CURRENT_DATA = '#{}/{}, {}'.format(foldId + 1, options.K_FOLD, _marker)
 
     return copy.deepcopy(data_current)
 
@@ -68,7 +71,7 @@ u_dist_cf = SVD(imputation(data_whole.pref_nan.copy(), imValue=pd.read_csv(r'../
 #--Prepare pref_train, mask, and the truth
 #90% X, 10% Y
 #Avoid autocorrelation when using all - 1 samples predicts a target
-id_X, id_Y = kFold(10, data_whole.nMN, seed=1)
+id_X, id_Y = kFold(3, data_whole.nMN, seed=1)
 
 #Acquire X and Y
 foldId = 1
@@ -80,11 +83,18 @@ data_Y.listData()
 #--Predicting Y by X with sim combinations
 #Inherit
 #u_dist_person  u_dist_sat  u_dist_demo  u_dist_cf  dist_triplet  dist_review  dist_genre
-output = gen_learnWeight(data=data_Y, exp='1', m_dists=[u_dist_cf], n_dists=[np.ones((data_current.nN, data_current.nN))], _cf=False, _colMask=False, nRef=-1, nEpoch=50, lRate=0.01, batchSize=-1, title='All')
+output = gen_learnWeight(data=data_Y, exp='1', m_dists=[np.ones((data_Y.nM, data_Y.nM)) + np.eye(data_Y.nM)], n_dists=[np.ones((data_Y.nN, data_Y.nN)) + np.eye(data_Y.nN)], _cf=False, nRef=-1, nEpoch=50, lRate=0.01, batchSize=-1, title='All')
+predictions, metrics = gen_model(**output)
+output = gen_learnWeight(data=data_Y, exp='1', m_dists=[u_dist_person + np.eye(data_Y.nM) * 2], n_dists=[np.ones((data_Y.nN, data_Y.nN)) + np.eye(data_Y.nN)], _cf=False, nRef=-1, nEpoch=50, lRate=0.01, batchSize=-1, title='All')
+predictions, metrics = gen_model(**output)
+output = gen_learnWeight(data=data_Y, exp='1', m_dists=[np.ones((data_Y.nM, data_Y.nM)) + np.eye(data_Y.nM)], n_dists=[dist_review + np.eye(data_Y.nN) * 2], _cf=False, nRef=-1, nEpoch=50, lRate=0.01, batchSize=-1, title='All')
 predictions, metrics = gen_model(**output)
 
 #Manual
-predictions, metrics = gen_model(data=data_Y, exp='1', nRef=-1, m_dists=[u_dist_cf], n_dists=[np.ones((data_current.nN, data_current.nN))], _cf=False, _colMask=False, m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='General model 2')
+options.DEBUG = False
+options.DEBUG = True
+predictions, metrics = gen_model(data=data_Y, exp='1', nRef=-1, m_dists=[u_dist_cf], n_dists=[np.ones((data_Y.nN, data_Y.nN))], _cf=False, m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='General model 2', target=[5, 14])
+predictions, metrics = gen_model(data=data_Y, exp='1', nRef=-1, m_dists=[np.ones((data_Y.nM, data_Y.nM))], n_dists=[dist_triplet], _cf=False, m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='General model 2', target=[5, 14])
 
 
 

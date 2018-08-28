@@ -80,7 +80,7 @@ def evalModel(predictions, truth, nMN, title, graph, logger=None):
     #Description
     mse = np.sum(np.square(predictions - truth)) / nMN
     cor = np.corrcoef(predictions, truth)[0, 1]
-    rho, _ = sp.stats.spearmanr(predictions, truth)
+    rho, _ = sp.stats.spearmanr(a=predictions, b=truth)
 
     output = logger if logger else print
     output('-' * 60)

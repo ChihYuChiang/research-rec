@@ -207,7 +207,7 @@ def gen_npDataset(nM, gameRatedByRater, pref_nan, isnan_inv, m_dists, n_dists, _
 
 
 #--Learn weight (average similarity)
-def gen_learnWeight(data, exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=0, lRate=0.5, batchSize=-1, _negSim=None, _colMask=False, _shuffle=False, _graph=False):
+def gen_learnWeight(data, exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globalStep=0, lRate=0.5, earlyStop=0, batchSize=-1, _negSim=None, _colMask=False, _shuffle=False, _graph=False):
 
     #--Log
     title += ' (${}, nRef={}, lRate={}, bSize={})'.format(exp, nRef, lRate, batchSize)
@@ -354,7 +354,7 @@ def gen_learnWeight(data, exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globa
 
             #For convergence termination
             if ep >= 5:
-                if sum(abs(np.array(costs[-4:-1]) - np.array(costs[-3:]))) <= 0.03:
+                if sum(abs(np.array(costs[-4:-1]) - np.array(costs[-3:]))) <= earlyStop:
                     logger.info('Cost after epoch %i: %f' % (ep, cost_epoch))
                     break
 
@@ -442,10 +442,11 @@ Model
 - Read in the data and functions in 1. and 2. by hand.
 - Note the default similarity is np.eyes not np.ones.
   Therefore, different from setting an arbitrary sim matrix and weight 0.
+- Also adjust the ordinary similarity matrix
 ------------------------------------------------------------
 '''
 #--Average similarity
-def gen_model(data, exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _negSim=False, _colMask=False, graph=False):
+def gen_model(data, exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, title, _negSim=False, _colMask=False, graph=False, target=[]):
     
     #Initialize
     m_dists, n_dists = gen_ini_dist(m_dists, n_dists, _cf)
@@ -460,11 +461,11 @@ def gen_model(data, exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, tit
         for n in data.gameRatedByRater[m]:
 
             if options.DEBUG:
-                if m != 2 or n != 1: continue
+                if m != target[0] or n != target[1]: continue
             
             #Prepare the reference ratings
             #Prepare the mask remove self and nan from the matrix 
-            pref_train, mask, truths_nan[m, n] = gen_pref8mask(pref_nan.copy(), isnan_inv.copy(), m, n, _colMask)
+            pref_train, mask, truths_nan[m, n] = gen_pref8mask(data.pref_nan.copy(), data.isnan_inv.copy(), m, n, _colMask)
 
             if options.DEBUG: print('pref_train', pref_train)
             if options.DEBUG: print('mask', mask)
@@ -503,8 +504,8 @@ def gen_model(data, exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, tit
             if options.DEBUG: return ["", ""]
 
     #Take non-nan entries and makes into long-form by [isnan_inv] slicing
-    truths_gen = truths_nan[isnan_inv]
-    predictions_gen = predictions_nan[isnan_inv]
+    truths_gen = truths_nan[data.isnan_inv]
+    predictions_gen = predictions_nan[data.isnan_inv]
 
     #Evaluation
     metrics_gen = evalModel(predictions_gen, truths_gen, data.nMN, title='{} ({})'.format(title, markers.CURRENT_DATA), graph=graph, logger=logger.info)
