@@ -148,29 +148,3 @@ def iniLogger(loggerName, fileName, _console):
         logger.addHandler(ch)
 
     return logger
-
-
-#--nan imputation by total mean and adjust by column and row effects
-#Return imputed matrix
-def imputation(matrix, imValue=None):
-    import numpy as np
-    
-    #Find nan iloc
-    naniloc = np.where(np.isnan(matrix))
-
-    #Insert appropriate value into the matrix where is nan
-    #Impute a predefined value
-    if imValue: matrix[naniloc] = imValue
-        
-    #Impute overall mean
-    else:
-        #Compute column and row effect
-        mMean, nMean = getMean(matrix)
-
-        #np.take is faster than fancy indexing i.e. nMean[[1, 3, 5]]
-        matrix[naniloc] = np.nanmean(matrix) + np.take(nMean, naniloc[1]) + np.take(mMean, naniloc[0])
-
-        #Substract mean, col and row effects from pref
-        matrix = deMean(matrix, mMean, nMean)
-
-    return matrix

@@ -155,6 +155,34 @@ def deMean(matrix_in, mMean=[], nMean=[]):
     return matrix_out
 
 
+#--nan imputation by total mean and adjust by column and row effects
+#Return imputed matrix
+def imputation(matrix, imValue=None):
+
+    #Deep copy np matrix
+    matrix = matrix.copy()
+    
+    #Find nan iloc
+    naniloc = np.where(np.isnan(matrix))
+
+    #Insert appropriate value into the matrix where is nan
+    #Impute a predefined value
+    if imValue: matrix[naniloc] = imValue
+        
+    #Impute overall mean
+    else:
+        #Compute column and row effect
+        mMean, nMean = getMean(matrix)
+
+        #np.take is faster than fancy indexing i.e. nMean[[1, 3, 5]]
+        matrix[naniloc] = np.nanmean(matrix) + np.take(nMean, naniloc[1]) + np.take(mMean, naniloc[0])
+
+        #Substract mean, col and row effects from pref
+        matrix = deMean(matrix, mMean, nMean)
+
+    return matrix
+
+
 #--Preprocess data
 #Raw data + preprocessing wrapper
 def preprocessing(description, _preDe=False):
@@ -190,6 +218,10 @@ def preprocessing(description, _preDe=False):
         print('Total number of ratings:\n', nMN)
 
     return pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
+
+#Load data of different versions
+def preprocessing_loadData(_preDe):
+
 
 #Return processed matrix, matrix shape, reversed nan index
 def preprocessing_core(pref_nan, _preDe=False):

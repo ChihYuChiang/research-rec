@@ -108,6 +108,10 @@ def gen_ini_w(m_a, n_a, m_b, n_b):
 #Prepare a mask masking target self and all nan cells
 def gen_pref8mask(pref_train, isnan_inv_mn, m, n, _colMask):
 
+    #--Deep copy np array
+    pref_train = pref_train.copy()
+    isnan_inv_mn = isnan_inv_mn.copy()
+
     #--Pref
     #Mask the pref_nan to acquire training (reference) data
     truth = pref_train[m, n]
@@ -122,7 +126,7 @@ def gen_pref8mask(pref_train, isnan_inv_mn, m, n, _colMask):
         truth -= mMean[m] + nMean[n]
 
     #Impute nan with total mean and adjust by column and row effects (demean)
-    pref_train = imputation(pref_train.copy(), pd.read_csv(r'../data/res_demean.csv').allmean[0])
+    pref_train = imputation(pref_train, pd.read_csv(r'../data/res_demean.csv').allmean[0])
 
     #--Mask
     #Remove self from the matrix 
@@ -179,7 +183,7 @@ def gen_npDataset(nM, gameRatedByRater, pref_nan, isnan_inv, m_dists, n_dists, _
         for n in gameRatedByRater[m]:
 
             #Prepare all required inputs
-            pref_train, mask, truth = gen_pref8mask(pref_nan.copy(), isnan_inv.copy(), m, n, _colMask)
+            pref_train, mask, truth = gen_pref8mask(pref_nan, isnan_inv, m, n, _colMask)
             m_sim, n_sim = gen_dist2sim(m_dists, n_dists, _cf, pref_train, _negSim)
 
             pref_trains.append(pref_train)
@@ -465,7 +469,7 @@ def gen_model(data, exp, nRef, m_dists, n_dists, _cf, m_a, n_a, m_b, n_b, c, tit
             
             #Prepare the reference ratings
             #Prepare the mask remove self and nan from the matrix 
-            pref_train, mask, truths_nan[m, n] = gen_pref8mask(data.pref_nan.copy(), data.isnan_inv.copy(), m, n, _colMask)
+            pref_train, mask, truths_nan[m, n] = gen_pref8mask(data.pref_nan, data.isnan_inv, m, n, _colMask)
 
             if options.DEBUG: print('pref_train', pref_train)
             if options.DEBUG: print('mask', mask)

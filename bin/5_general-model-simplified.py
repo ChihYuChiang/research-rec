@@ -65,7 +65,7 @@ Model
 ------------------------------------------------------------
 '''
 #--Compute CF using all samples
-u_dist_cf = SVD(imputation(data_whole.pref_nan.copy(), imValue=pd.read_csv(r'../data/res_demean.csv').allmean[0]))
+u_dist_cf = SVD(imputation(data_whole.pref_nan, imValue=pd.read_csv(r'../data/res_demean.csv').allmean[0]))
 
 
 #--Prepare pref_train, mask, and the truth
