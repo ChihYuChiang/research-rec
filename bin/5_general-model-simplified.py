@@ -9,7 +9,7 @@ Component functions
 ------------------------------------------------------------
 '''
 def gen_preprocessing_kFold(data_whole, data_current, foldId, _marker):
-    assert _marker in ['X', 'Y'], 'Wrong marker.'
+    assert _marker in ['X', 'Y'], 'Wrong marker. Use X or Y.'
 
     #Fold id 1 -> 0. Fold ID starts from 1.
     foldId -= 1

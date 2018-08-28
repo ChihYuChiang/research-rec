@@ -12,6 +12,7 @@ import warnings
 from functools import partial
 from scipy.stats import t as dis_t
 from scipy.spatial.distance import pdist, squareform
+from sklearn.linear_model import LinearRegression
 from generic import *
 
 
@@ -113,13 +114,14 @@ Common functions
 #--Data container
 class DataContainer(UniversalContainer):
 
-    def __init__(self, _preDe):
-        self.pref_nan, self.prefs, self.nM, self.nN, self.nMN, self.isnan_inv, self.gameRatedByRater = preprocessing(description=False, _preDe=_preDe)
-        self.naniloc_inv = np.where(self.isnan_inv)
-    
     def updateByNan(self, _preDe):
         self.prefs, self.nM, self.nN, self.nMN, self.isnan_inv, self.gameRatedByRater = preprocessing_core(self.pref_nan, _preDe=_preDe)
         self.naniloc_inv = np.where(self.isnan_inv)
+
+    def __init__(self, _preDe):
+        self.pref_nan = preprocessing_loadData(_preDe)
+        if not _preDe: self.pref_nan = deMean(self.pref_nan)
+        self.updateByNan(_preDe)
 
 
 #--SVD
@@ -137,6 +139,20 @@ def SVD(matrix, nf=10):
     u_dist = sp.spatial.distance.squareform(sp.spatial.distance.pdist(u_t, 'cosine'))
 
     return u_dist
+
+
+#--Acquire row and column effect
+def getMean(matrix):
+
+    #Compute row and column effects
+    mMean = np.nanmean(matrix, axis=1) - np.mean(np.nanmean(matrix, axis=1))
+    nMean = np.nanmean(matrix, axis=0) - np.mean(np.nanmean(matrix, axis=0))
+
+    #Deal with empty row/column (all nan)
+    mMean[np.where(np.isnan(mMean))] = np.nanmean(matrix)
+    nMean[np.where(np.isnan(nMean))] = np.nanmean(matrix)
+
+    return mMean, nMean
 
 
 #--Remove row and column effects
@@ -187,6 +203,26 @@ def imputation(matrix, imValue=None):
 #Raw data + preprocessing wrapper
 def preprocessing(description, _preDe=False):
 
+    #Raw data
+    pref_nan = preprocessing_loadData(_preDe)
+
+    #Demean
+    pref_nan = deMean(pref_nan)
+
+    #Preprocessing
+    prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan, _preDe)
+
+    #Data description
+    if description:
+        print('Number of raters per game:\n', np.sum(isnan_inv, axis=0))
+        print('Number of games rated per rater:\n', np.sum(isnan_inv, axis=1))
+        print('Total number of ratings:\n', nMN)
+
+    return pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
+
+#Load data of different versions
+def preprocessing_loadData(_preDe):
+    
     #Whether to use the preliminary regression demean
     if _preDe:
         #Load data (long form)
@@ -208,20 +244,7 @@ def preprocessing(description, _preDe=False):
         #Get specific rating: pref_nan[rater, game]
         pref_nan = (pref_raw[:, np.arange(0, nN_raw, 3)] + pref_raw[:, np.arange(1, nN_raw, 3)] + pref_raw[:, np.arange(2, nN_raw, 3)]) / 3
 
-    #Preprocessing
-    prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan, _preDe)
-
-    #Data description
-    if description:
-        print('Number of raters per game:\n', np.sum(isnan_inv, axis=0))
-        print('Number of games rated per rater:\n', np.sum(isnan_inv, axis=1))
-        print('Total number of ratings:\n', nMN)
-
-    return pref_nan, prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
-
-#Load data of different versions
-def preprocessing_loadData(_preDe):
-
+    return pref_nan
 
 #Return processed matrix, matrix shape, reversed nan index
 def preprocessing_core(pref_nan, _preDe=False):
@@ -239,13 +262,8 @@ def preprocessing_core(pref_nan, _preDe=False):
     #Total num of rating (!= nM * nN)
     nMN = len(np.where(isnan_inv)[0])
 
-    if _preDe:
-        #It was demeaned beforehand
+    #Long form prefs
         prefs = pref_nan[isnan_inv]
-
-    else:
-        #Subtract column and row effects for pref matrix and makes it long-form
-        prefs = deMean(pref_nan)[isnan_inv]
 
     return prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
 

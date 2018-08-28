@@ -56,22 +56,6 @@ def scatter(vectors, names):
     plt.show()
 
 
-#--Remove row and column effect
-#Acquire row and column effect
-def getMean(matrix):
-    import numpy as np
-
-    #Compute row and column effects
-    mMean = np.nanmean(matrix, axis=1) - np.mean(np.nanmean(matrix, axis=1))
-    nMean = np.nanmean(matrix, axis=0) - np.mean(np.nanmean(matrix, axis=0))
-
-    #Deal with empty row/column (all nan)
-    mMean[np.where(np.isnan(mMean))] = np.nanmean(matrix)
-    nMean[np.where(np.isnan(nMean))] = np.nanmean(matrix)
-
-    return mMean, nMean
-
-
 #--Evaluate model with mse, cor, and graphing
 def evalModel(predictions, truth, nMN, title, graph, logger=None):
     import numpy as np
