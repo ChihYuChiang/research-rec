@@ -59,7 +59,7 @@ def gen_preprocessing_kFold(data_whole, data_current, foldId, _marker):
             data_current.pref_nan[nanCell] = np.nan
 
         #Update global vars by the new pref_nan
-        data_current.updateByNan(_preDe=options.PRE_DE)
+        data_current.updateByNan()
 
     #Log
     markers.CURRENT_DATA = '#{}/{}, {}'.format(foldId + 1, options.K_FOLD, _marker)

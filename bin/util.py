@@ -114,14 +114,14 @@ Common functions
 #--Data container
 class DataContainer(UniversalContainer):
 
-    def updateByNan(self, _preDe):
-        self.prefs, self.nM, self.nN, self.nMN, self.isnan_inv, self.gameRatedByRater = preprocessing_core(self.pref_nan, _preDe=_preDe)
+    def updateByNan(self):
+        self.prefs, self.nM, self.nN, self.nMN, self.isnan_inv, self.gameRatedByRater = preprocessing_core(self.pref_nan)
         self.naniloc_inv = np.where(self.isnan_inv)
 
-    def __init__(self, _preDe):
+    def __init__(self, _preDe=False):
         self.pref_nan = preprocessing_loadData(_preDe)
         if not _preDe: self.pref_nan = deMean(self.pref_nan)
-        self.updateByNan(_preDe)
+        self.updateByNan()
 
 
 #--SVD
@@ -210,7 +210,7 @@ def preprocessing(description, _preDe=False):
     pref_nan = deMean(pref_nan)
 
     #Preprocessing
-    prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan, _preDe)
+    prefs, nM, nN, nMN, isnan_inv, gameRatedByRater = preprocessing_core(pref_nan)
 
     #Data description
     if description:
@@ -226,7 +226,7 @@ def preprocessing_loadData(_preDe):
     #Whether to use the preliminary regression demean
     if _preDe:
         #Load data (long form)
-        rowName = pd.read_csv(r'../data/raw/raw_preference.csv', ).ResponseId.unique()
+        rowName = pd.read_csv(r'../data/raw/raw_preference.csv').ResponseId.unique()
         pref_raw = pd.read_csv(r'../data/res_demean.csv')
 
         #Produce the item-rater matrix
@@ -247,7 +247,7 @@ def preprocessing_loadData(_preDe):
     return pref_nan
 
 #Return processed matrix, matrix shape, reversed nan index
-def preprocessing_core(pref_nan, _preDe=False):
+def preprocessing_core(pref_nan):
 
     #Get final data shape
     nM, nN = pref_nan.shape
@@ -263,7 +263,7 @@ def preprocessing_core(pref_nan, _preDe=False):
     nMN = len(np.where(isnan_inv)[0])
 
     #Long form prefs
-        prefs = pref_nan[isnan_inv]
+    prefs = pref_nan[isnan_inv]
 
     return prefs, nM, nN, nMN, isnan_inv, gameRatedByRater
 
