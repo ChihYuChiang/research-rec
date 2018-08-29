@@ -226,15 +226,15 @@ def gen_learnWeight(data, exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globa
     #Prepare raw data
     m_dists_processed, n_dists_processed, nMDist, nNDist = gen_iniData(m_dists, n_dists, _cf)
 
-    if options.DEBUG: print(m_dists_processed)
-    if options.DEBUG: print(n_dists_processed)
-    if options.DEBUG: print(nMDist)
-    if options.DEBUG: print(nNDist)
+    if options.DEBUG: print('m_dists_processed', m_dists_processed)
+    if options.DEBUG: print('n_dists_processed', n_dists_processed)
+    if options.DEBUG: print('nMDist', nMDist)
+    if options.DEBUG: print('nNDist', nNDist)
 
     dataset_np, nExample = gen_npDataset(data.nM, data.gameRatedByRater, data.pref_nan, data.isnan_inv, m_dists_processed, n_dists_processed, _cf, _negSim, _colMask)
 
-    if options.DEBUG: print(dataset_np['m_sims'][0])
-    if options.DEBUG: print(dataset_np['n_sims'][0])
+    if options.DEBUG: print('dataset_np[m_sims][0]', dataset_np['m_sims'][0])
+    if options.DEBUG: print('dataset_np[n_sims][0]', dataset_np['n_sims'][0])
     
     if batchSize == -1: batchSize = nExample #An epoch as a batch
     eyeM_batch = np.broadcast_to(np.eye(data.nM).reshape(1, data.nM, data.nM), (batchSize, data.nM, data.nM))
@@ -297,8 +297,9 @@ def gen_learnWeight(data, exp, title, m_dists, n_dists, _cf, nRef, nEpoch, globa
         
         pred = c + tf.reduce_sum(tf.gather_nd(pref_train_mask * mn_sim_mask, refIdx), axis=1) / (tf.reduce_sum(tf.gather_nd(mn_sim_mask, refIdx), axis=1) + 1e-10)
     
-    #Cost (SE)
+    #Cost (SE or correlation)
     cost = tf.reduce_sum((pred - pref_true) ** 2)
+    # cost = -tf.abs(((batchSize + 1) * tf.reduce_sum(pred * pref_true) - tf.reduce_sum(pred) * tf.reduce_sum(pref_true)) / ((((batchSize + 1) * tf.reduce_sum(pred ** 2) - tf.reduce_sum(pred) ** 2) ** 0.5) * (((batchSize + 1) * tf.reduce_sum(pref_true ** 2) - tf.reduce_sum(pref_true) ** 2) ** 0.5)))
 
 
     #--Optimizer, initializer, saver
