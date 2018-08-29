@@ -88,10 +88,10 @@ u_dist_cf = SVD(imputation(data_X.pref_nan, imValue=np.nanmean(data_X.pref_nan))
 #--Prepare pref_train, mask, and the truth
 #90% X, 10% Y
 #Avoid autocorrelation when using all - 1 samples predicts a target
-id_X, id_Y = kFold(3, data_whole.nMN, seed=1)
+id_X, id_Y = kFold(10, data_whole.nMN, seed=1)
 
 #Acquire X and Y
-foldId = 1
+foldId = 3
 data_X, data_Y = gen_preprocessing_kFold(foldId)
 data_Y.listData()
 
@@ -101,7 +101,7 @@ data_Y.listData()
 #u_dist_person  u_dist_sat  u_dist_demo  u_dist_cf  dist_triplet  dist_review  dist_genre
 output = gen_learnWeight(data=data_Y, exp='1', m_dists=[np.ones((data_Y.nM, data_Y.nM)) + np.eye(data_Y.nM)], n_dists=[np.ones((data_Y.nN, data_Y.nN)) + np.eye(data_Y.nN)], _cf=False, nRef=-1, nEpoch=50, lRate=0.01, batchSize=-1, title='All')
 predictions, metrics = gen_model(**output)
-output = gen_learnWeight(data=data_Y, exp='1', m_dists=[u_dist_cf], n_dists=[np.ones((data_Y.nN, data_Y.nN))], _cf=False, nRef=-1, nEpoch=50, lRate=0.01, batchSize=-1, title='All')
+output = gen_learnWeight(data=data_Y, exp='1', m_dists=[], n_dists=[dist_review], _cf=False, nRef=5, nEpoch=1000, lRate=0.01, batchSize=-1, earlyStop=0.01, title='All')
 predictions, metrics = gen_model(**output)
 output = gen_learnWeight(data=data_Y, exp='1', m_dists=[np.ones((data_Y.nM, data_Y.nM)) + np.eye(data_Y.nM)], n_dists=[dist_review + np.eye(data_Y.nN) * 2], _cf=False, nRef=-1, nEpoch=50, lRate=0.01, batchSize=-1, title='All')
 predictions, metrics = gen_model(**output)
@@ -111,14 +111,10 @@ predictions, metrics = gen_model(**output)
 #Manual
 options.DEBUG = False
 options.DEBUG = True
-predictions, metrics = gen_model(data=data_Y, exp='1', nRef=-1, m_dists=[u_dist_cf], n_dists=[np.ones((data_Y.nN, data_Y.nN))], _cf=False, m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='General model 2', target=[5, 14])
+predictions, metrics = gen_model(data=data_Y, exp='1', nRef=5, m_dists=[u_dist_person], n_dists=[], _cf=False, m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='General model 2')
 predictions, metrics = gen_model(data=data_Y, exp='1', nRef=-1, m_dists=[np.ones((data_Y.nM, data_Y.nM))], n_dists=[dist_triplet], _cf=False, m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='General model 2', target=[0, 3])
 predictions, metrics = gen_model(data=data_Y, exp='1', nRef=-1, m_dists=[u_dist_sat], n_dists=[dist_review], _cf=False, m_a=[1], n_a=[1], m_b=[1], n_b=[1], c=[0], title='General model 2')
 
-pred = np.array([1, 2, 3])
-pref_true = np.array([2, 2, 3])
-batchSize = 2
--np.abs((batchSize * np.sum(pred * pref_true) - np.sum(pred) * np.sum(pref_true)) / (((batchSize * np.sum(pred ** 2) - np.sum(pred) ** 2) ** 0.5) * ((batchSize * np.sum(pref_true ** 2) - np.sum(pref_true) ** 2) ** 0.5)))
 
 
 
